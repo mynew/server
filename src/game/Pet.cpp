@@ -1179,20 +1179,20 @@ bool Pet::InitStatsForLevel(uint32 petlevel, Unit* owner)
                         SetBonusDamage( int32(val));
                         break;
                     }
-					case CLASS_PRIEST:
+                    case CLASS_PRIEST:
                     {
-                                                            //65% damage bonus of priest's shadow damage
-						//TODO: Fix dodge rating. Must be ~90%
+                        //65% damage bonus of priest's shadow damage
+                        //TODO: Fix dodge rating. Must be ~90%
                         float val = owner->GetUInt32Value(PLAYER_FIELD_MOD_DAMAGE_DONE_POS + SPELL_SCHOOL_SHADOW) * 0.65f;
                         if(val < 0)
                             val = 0;
                         SetBonusDamage( int32(val) );
-						createResistance[SPELL_SCHOOL_HOLY]   = 0;
-						createResistance[SPELL_SCHOOL_FIRE]   = 365;
-						createResistance[SPELL_SCHOOL_NATURE] = 365;
-						createResistance[SPELL_SCHOOL_FROST]  = 365;
-						createResistance[SPELL_SCHOOL_SHADOW] = 365;
-						createResistance[SPELL_SCHOOL_ARCANE] = 365;
+                        createResistance[SPELL_SCHOOL_HOLY]   = 0;
+                        createResistance[SPELL_SCHOOL_FIRE]   = 365;
+                        createResistance[SPELL_SCHOOL_NATURE] = 365;
+                        createResistance[SPELL_SCHOOL_FROST]  = 365;
+                        createResistance[SPELL_SCHOOL_SHADOW] = 365;
+                        createResistance[SPELL_SCHOOL_ARCANE] = 365;
                         break;
                     }
                     default:

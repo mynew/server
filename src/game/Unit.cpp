@@ -2878,9 +2878,9 @@ SpellMissInfo Unit::SpellHitResult(Unit *pVictim, SpellEntry const *spell, bool 
     // Check for immune (use charges)
     if(!(spell->SpellFamilyName == SPELLFAMILY_PRIEST && spell->IsFitToFamilyMask(UI64LIT(0x8000000000)))){
         //if(!(spell->Attributes & SPELL_ATTR_UNAFFECTED_BY_INVULNERABILITY)){
-            if (pVictim->IsImmuneToSpell(spell)){
-                return SPELL_MISS_IMMUNE;
-            }
+        if (pVictim->IsImmuneToSpell(spell)){
+            return SPELL_MISS_IMMUNE;
+        }
         //}
     }
 
@@ -2890,8 +2890,8 @@ SpellMissInfo Unit::SpellHitResult(Unit *pVictim, SpellEntry const *spell, bool 
         return SPELL_MISS_NONE;
 
     // Check for immune (use charges) & aditional check for Mass Dispel. Mass Dispel
-	// does damage & in case it will be checked for immune to damage it return immune.
-	// Check for immune to damage is very horrible for Mass Dispel.
+    // does damage & in case it will be checked for immune to damage it return immune.
+    // Check for immune to damage is very horrible for Mass Dispel.
     if(!(spell->SpellFamilyName == SPELLFAMILY_PRIEST && spell->IsFitToFamilyMask(UI64LIT(0x8000000000)))){
         if(!(spell->Attributes & SPELL_ATTR_UNAFFECTED_BY_INVULNERABILITY)){
             if(pVictim->IsImmunedToDamage(GetSpellSchoolMask(spell))){

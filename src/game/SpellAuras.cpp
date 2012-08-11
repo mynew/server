@@ -2705,7 +2705,7 @@ void Aura::HandleAuraModShapeshift(bool apply, bool Real)
         target->RemoveSpellsCausingAura(SPELL_AURA_MOD_SHAPESHIFT, GetHolder());
 
         // need send to client not form active state, or at re-apply form client go crazy
-        // target->SendForcedObjectUpdate();                -- not need in pre-3.x
+        target->SendForcedObjectUpdate();
 
         if (modelid > 0)
             target->SetDisplayId(modelid);
@@ -6766,6 +6766,12 @@ m_permanent(false), m_isRemovedOnShapeLost(true), m_deleted(false), m_in_use(0)
                               m_spellProto->Stances &&
                               !m_spellProto->HasAttribute(SPELL_ATTR_EX2_NOT_NEED_SHAPESHIFT) &&
                               !m_spellProto->HasAttribute(SPELL_ATTR_NOT_SHAPESHIFT));
+
+    //Do not allow remove WeakenedSoul when shifting out Shadowform &
+    //Berserker Rage when switching stances.
+    if ( GetId() == 6788 || GetId() == 18499 ){
+        m_isRemovedOnShapeLost = false;
+    }
 
     Unit* unitCaster = caster && caster->isType(TYPEMASK_UNIT) ? (Unit*)caster : NULL;
 

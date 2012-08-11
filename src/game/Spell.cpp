@@ -1704,7 +1704,7 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, UnitList&
         {
             m_targets.m_targetMask = 0;
             unMaxTargets = EffectChainTarget;
-            float max_range = radius + unMaxTargets * CHAIN_SPELL_JUMP_RADIUS;
+            float max_range = radius + unMaxTargets * CHAIN_HEAL_JUMP_RADIUS;
             UnitList tempTargetUnitMap;
             {
                 MaNGOS::AnyFriendlyUnitInObjectRangeCheck u_check(m_caster, max_range);
@@ -1741,7 +1741,7 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, UnitList&
 
             while(t && next != tempTargetUnitMap.end())
             {
-                if(!prev->IsWithinDist(*next, CHAIN_SPELL_JUMP_RADIUS))
+                if(!prev->IsWithinDist(*next, CHAIN_HEAL_JUMP_RADIUS))
                     break;
 
                 if(!prev->IsWithinLOSInMap(*next)
@@ -2273,7 +2273,7 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, UnitList&
             else
             {
                 unMaxTargets = EffectChainTarget;
-                float max_range = radius + unMaxTargets * CHAIN_SPELL_JUMP_RADIUS;
+                float max_range = radius + unMaxTargets * CHAIN_HEAL_JUMP_RADIUS;
 
                 UnitList tempTargetUnitMap;
 
@@ -2297,7 +2297,7 @@ void Spell::SetTargetMap(SpellEffectIndex effIndex, uint32 targetMode, UnitList&
 
                 while(t && next != tempTargetUnitMap.end())
                 {
-                    if(!prev->IsWithinDist(*next, CHAIN_SPELL_JUMP_RADIUS))
+                    if(!prev->IsWithinDist(*next, CHAIN_HEAL_JUMP_RADIUS))
                         break;
 
                     if(!prev->IsWithinLOSInMap(*next))

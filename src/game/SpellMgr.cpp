@@ -3924,7 +3924,7 @@ DiminishingReturnsType GetDiminishingReturnsGroupType(DiminishingGroup group)
         case DIMINISHING_DEATHCOIL:
         case DIMINISHING_FREEZE:
         case DIMINISHING_BANISH:
-		case DIMINISHING_WARLOCK_FEAR:
+        case DIMINISHING_WARLOCK_FEAR:
         case DIMINISHING_KNOCKOUT:
             return DRTYPE_PLAYER;
         default:

@@ -6627,6 +6627,7 @@ bool ChatHandler::HandleExtendedCostCommand(char* args)
 
     WorldDatabase.PExecute("UPDATE npc_vendor SET extendedcost = %u WHERE item = %u",extendedcost,itemid);
     PSendSysMessage("Updated extendedcost to %u on %s",extendedcost,pItem->GetNameLink(true).c_str());
+    return true;
 }
 
 bool ChatHandler::HandleReqTitleCommand(char* args)

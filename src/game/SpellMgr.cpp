@@ -21,12 +21,25 @@
 #include "SpellAuraDefines.h"
 #include "ProgressBar.h"
 #include "DBCStores.h"
+#include "SQLStorages.h"
 #include "World.h"
 #include "Chat.h"
 #include "Spell.h"
 #include "BattleGroundMgr.h"
 #include "MapManager.h"
 #include "Unit.h"
+
+bool IsPrimaryProfessionSkill(uint32 skill)
+{
+    SkillLineEntry const *pSkill = sSkillLineStore.LookupEntry(skill);
+    if(!pSkill)
+        return false;
+
+    if(pSkill->categoryId != SKILL_CATEGORY_PROFESSION)
+        return false;
+
+    return true;
+}
 
 SpellMgr::SpellMgr()
 {
@@ -440,6 +453,9 @@ SpellSpecific GetSpellSpecific(uint32 spellId)
         {
             if (spellInfo->SpellFamilyFlags & UI64LIT(0x00008000010000))
                 return SPELL_POSITIVE_SHOUT;
+            // Sunder Armor (vs Expose Armor)
+            if (spellInfo->IsFitToFamilyMask(UI64LIT(0x00000000004000)))
+                return SPELL_ARMOR_REDUCE;
 
             break;
         }
@@ -502,6 +518,13 @@ SpellSpecific GetSpellSpecific(uint32 spellId)
 
             break;
         }
+        case SPELLFAMILY_ROGUE:
+        {
+            // Expose Armor (vs Sunder Armor)
+            if (spellInfo->IsFitToFamilyMask(UI64LIT(0x00000000080000)))
+                return SPELL_ARMOR_REDUCE;
+            break;
+       }
 
         case SPELLFAMILY_POTION:
             return sSpellMgr.GetSpellElixirSpecific(spellInfo->Id);
@@ -593,6 +616,8 @@ bool IsSingleFromSpellSpecificPerTarget(SpellSpecific spellSpec1,SpellSpecific s
             return spellSpec2==SPELL_FOOD
                 || spellSpec2==SPELL_DRINK
                 || spellSpec2==SPELL_FOOD_AND_DRINK;
+        case SPELL_ARMOR_REDUCE:
+            return spellSpec1 == spellSpec2;
         default:
             return false;
     }
@@ -1804,6 +1829,10 @@ bool SpellMgr::IsNoStackSpellDueToSpell(uint32 spellId_1, uint32 spellId_2) cons
                         (spellInfo_2->Id == 28093 && spellInfo_1->Id == 42084))
                         return false;
 
+                    // Lightning Speed (Mongoose) stack per weapon
+                    if (spellInfo_1->Id == 28093 && spellInfo_2->Id == 28093)
+                        return false;
+
                     // Soulstone Resurrection and Twisting Nether (resurrector)
                     if (spellInfo_1->SpellIconID == 92 && spellInfo_2->SpellIconID == 92 && (
                         (spellInfo_1->SpellVisual == 99 && spellInfo_2->SpellVisual == 0) ||
@@ -2040,6 +2069,11 @@ bool SpellMgr::IsNoStackSpellDueToSpell(uint32 spellId_1, uint32 spellId_2) cons
                 // Cat Energy (Feral T4 (2)) and Omen of Clarity
                 if ((spellInfo_1->Id == 16864 && spellInfo_2->Id == 37311) ||
                     (spellInfo_2->Id == 16864 && spellInfo_1->Id == 37311))
+                    return false;
+
+                // Moonfire and Lacerate
+                if ((spellInfo_1->SpellIconID == 225 && spellInfo_2->SpellIconID == 2246) ||
+                    (spellInfo_2->SpellIconID == 225 && spellInfo_1->SpellIconID == 2246))
                     return false;
             }
 
@@ -3793,13 +3827,9 @@ DiminishingGroup GetDiminishingReturnsGroupForSpell(SpellEntry const* spellproto
             // Blind
             else if (spellproto->IsFitToFamilyMask(UI64LIT(0x00001000000)))
                 return DIMINISHING_BLIND_CYCLONE;
-            break;
-        }
-        case SPELLFAMILY_HUNTER:
-        {
-            // Freezing Trap
-            if (spellproto->IsFitToFamilyMask(UI64LIT(0x00000000008)))
-                return DIMINISHING_FREEZE;
+            // Gouge
+            else if ( spellproto->IsFitToFamilyMask(UI64LIT(0x00000000008)) )
+                return DIMINISHING_POLYMORPH;
             break;
         }
         case SPELLFAMILY_WARLOCK:
@@ -3839,7 +3869,7 @@ DiminishingGroup GetDiminishingReturnsGroupForSpell(SpellEntry const* spellproto
         return triggered ? DIMINISHING_TRIGGER_STUN : DIMINISHING_CONTROL_STUN;
     if (mechanic & (1<<(MECHANIC_SLEEP-1)))
         return DIMINISHING_SLEEP;
-    if (mechanic & (1<<(MECHANIC_POLYMORPH-1)))
+    if (mechanic & (1<<(MECHANIC_POLYMORPH-1)) || mechanic & (1<<(MECHANIC_SAPPED-1)))
         return DIMINISHING_POLYMORPH;
     if (mechanic & (1<<(MECHANIC_ROOT-1)))
         return triggered ? DIMINISHING_TRIGGER_ROOT : DIMINISHING_CONTROL_ROOT;
@@ -3847,8 +3877,6 @@ DiminishingGroup GetDiminishingReturnsGroupForSpell(SpellEntry const* spellproto
         return DIMINISHING_FEAR;
     if (mechanic & (1<<(MECHANIC_CHARM-1)))
         return DIMINISHING_CHARM;
-    if (mechanic & (1<<(MECHANIC_SILENCE-1)))
-        return DIMINISHING_SILENCE;
     if (mechanic & (1<<(MECHANIC_DISARM-1)))
         return DIMINISHING_DISARM;
     if (mechanic & (1<<(MECHANIC_FREEZE-1)))
@@ -3904,7 +3932,6 @@ DiminishingReturnsType GetDiminishingReturnsGroupType(DiminishingGroup group)
         case DIMINISHING_FEAR:
         case DIMINISHING_CHARM:
         case DIMINISHING_POLYMORPH:
-        case DIMINISHING_SILENCE:
         case DIMINISHING_DISARM:
         case DIMINISHING_DEATHCOIL:
         case DIMINISHING_FREEZE:

@@ -52,6 +52,8 @@
 #include "Util.h"
 #include "TemporarySummon.h"
 #include "ScriptMgr.h"
+#include "GridNotifiers.h"
+#include "GridNotifiersImpl.h"
 
 pEffect SpellEffects[TOTAL_SPELL_EFFECTS]=
 {
@@ -2182,7 +2184,7 @@ void Spell::EffectTriggerSpell(SpellEffectIndex effIndex)
             }
             return;
         }
-        // Priest Shadowfiend (34433) need apply mana gain trigger aura on pet
+        // Priest Shadowfiend (34433)
         case 41967:
         {
             if (Unit *pet = unitTarget->GetPet())
@@ -2330,12 +2332,15 @@ void Spell::EffectTeleportUnits(SpellEffectIndex eff_idx)
             else if(unitTarget->GetTypeId() == TYPEID_PLAYER)
                 pTarget = unitTarget->GetMap()->GetUnit(((Player*)unitTarget)->GetSelectionGuid());
 
-            // Init dest coordinates
-            float x = m_targets.m_destX;
-            float y = m_targets.m_destY;
-            float z = m_targets.m_destZ;
+            WorldLocation destLoc;
+            destLoc.coord_x = m_targets.m_destX;
+            destLoc.coord_y = m_targets.m_destY;
+            destLoc.coord_z = m_targets.m_destZ;
+
             float orientation = pTarget ? pTarget->GetOrientation() : unitTarget->GetOrientation();
-            unitTarget->NearTeleportTo(x,y,z,orientation,unitTarget==m_caster);
+            unitTarget->MovePositionToFirstCollision(destLoc, unitTarget->GetObjectScale(), orientation);
+
+            unitTarget->NearTeleportTo(destLoc.coord_x, destLoc.coord_y, (destLoc.coord_z + unitTarget->GetObjectScale()),orientation,unitTarget==m_caster);
             return;
         }
         default:
@@ -3244,9 +3249,7 @@ void Spell::EffectSummonType(SpellEffectIndex eff_idx)
         }
         case SUMMON_PROP_GROUP_CONTROLLABLE:
         {
-            // no type here
-            // maybe wrong - but thats the handler currently used for those
-            DoSummonGuardian(eff_idx, summon_prop->FactionId);
+            DoSummonPossessed(eff_idx, summon_prop->FactionId);
             break;
         }
         default:
@@ -3267,7 +3270,7 @@ void Spell::DoSummon(SpellEffectIndex eff_idx)
     if (!pet_entry)
         return;
 
-    CreatureInfo const* cInfo = sCreatureStorage.LookupEntry<CreatureInfo>(pet_entry);
+    CreatureInfo const* cInfo = ObjectMgr::GetCreatureTemplate(pet_entry);
     if (!cInfo)
     {
         sLog.outErrorDb("Spell::DoSummon: creature entry %u not found for spell %u.", pet_entry, m_spellInfo->Id);
@@ -3375,6 +3378,16 @@ void Spell::EffectDispel(SpellEffectIndex eff_idx)
     if (!unitTarget)
         return;
 
+    //Cause caster & hostile target to enter combat by dispelling it.
+    if (unitTarget->IsHostileTo(m_caster))
+    {
+        m_caster->SetInCombatWith(unitTarget);
+        unitTarget->SetInCombatWith(m_caster);
+    }
+    //Caster enter combat if friendly target in combat.
+    else if (unitTarget->IsFriendlyTo(m_caster) && unitTarget->isInCombat())
+        m_caster->SetInCombatWith(unitTarget);
+
     // Fill possible dispel list
     std::list <std::pair<SpellAuraHolder* ,uint32> > dispel_list;
 
@@ -3403,6 +3416,11 @@ void Spell::EffectDispel(SpellEffectIndex eff_idx)
             dispel_list.push_back(std::pair<SpellAuraHolder* ,uint32>(holder, holder->GetStackAmount()));
         }
     }
+
+    // don't allow dispeling more times than buff count
+    if (uint32(damage) > dispel_list.size())
+        damage = dispel_list.size();
+
     // Ok if exist some buffs for dispel try dispel it
     if (!dispel_list.empty())
     {
@@ -3681,7 +3699,7 @@ void Spell::DoSummonGuardian(SpellEffectIndex eff_idx, uint32 forceFaction)
     if (!pet_entry)
         return;
 
-    CreatureInfo const* cInfo = sCreatureStorage.LookupEntry<CreatureInfo>(pet_entry);
+    CreatureInfo const* cInfo = ObjectMgr::GetCreatureTemplate(pet_entry);
     if (!cInfo)
     {
         sLog.outErrorDb("Spell::DoSummonGuardian: creature entry %u not found for spell %u.", pet_entry, m_spellInfo->Id);
@@ -4092,7 +4110,7 @@ void Spell::EffectSummonPet(SpellEffectIndex eff_idx)
             return;
     }
 
-    CreatureInfo const* cInfo = petentry ? sCreatureStorage.LookupEntry<CreatureInfo>(petentry) : NULL;
+    CreatureInfo const* cInfo = petentry ? ObjectMgr::GetCreatureTemplate(petentry) : NULL;
 
     // == 0 in case call current pet, check only real summon case
     if (petentry && !cInfo)
@@ -4305,22 +4323,38 @@ void Spell::EffectWeaponDmg(SpellEffectIndex eff_idx)
             // Devastate
             if(m_spellInfo->SpellVisual == 671 && m_spellInfo->SpellIconID == 1508)
             {
-                customBonusDamagePercentMod = true;
-                bonusDamagePercentMod = 0.0f;               // only applied if auras found
-
                 // Sunder Armor
                 Aura* sunder = unitTarget->GetAura(SPELL_AURA_MOD_RESISTANCE, SPELLFAMILY_WARRIOR, UI64LIT(0x0000000000004000), m_caster->GetObjectGuid());
 
-                // Devastate bonus and sunder armor refresh, additional threat
+                // Devastate bonus and sunder armor refresh
                 if (sunder)
                 {
                     sunder->GetHolder()->RefreshHolder();
+                    spell_bonus += sunder->GetStackAmount() * CalculateDamage(EFFECT_INDEX_2, unitTarget);
+                }
 
-                    // 100% * stack
-                    bonusDamagePercentMod += 1.0f * sunder->GetStackAmount();
+                // Devastate causing Sunder Armor Effect
+                if (!sunder || sunder->GetStackAmount() < sunder->GetSpellProto()->StackAmount)
+                {
+                    // get highest rank of the Sunder Armor spell
+                    const PlayerSpellMap& sp_list = ((Player*)m_caster)->GetSpellMap();
+                    for (PlayerSpellMap::const_iterator itr = sp_list.begin(); itr != sp_list.end(); ++itr)
+                    {
+                        // only highest rank is shown in spell book, so simply check if shown in spell book
+                        if (!itr->second.active || itr->second.disabled || itr->second.state == PLAYERSPELL_REMOVED)
+                            continue;
 
-                    // 25 * stack
-                    unitTarget->AddThreat(m_caster, 25.0f * sunder->GetStackAmount(), false, GetSpellSchoolMask(m_spellInfo), m_spellInfo);
+                        SpellEntry const *spellInfo = sSpellStore.LookupEntry(itr->first);
+                        if (!spellInfo)
+                            continue;
+
+                        if (spellInfo->IsFitToFamily(SPELLFAMILY_WARRIOR, UI64LIT(0x0000000000004000)) &&
+                            spellInfo->Id != m_spellInfo->Id)
+                        {
+                             m_caster->CastSpell(unitTarget, spellInfo->Id, true);
+                             break;
+                        }
+                    }
                 }
             }
             break;
@@ -4356,6 +4390,36 @@ void Spell::EffectWeaponDmg(SpellEffectIndex eff_idx)
 
                 if(found)
                     totalDamagePercentMod *= 1.5f;          // 150% if poisoned
+
+                //Find Weakness for mutilate
+                Unit::SpellAuraHolderMap const& auras = m_caster->GetSpellAuraHolderMap();
+                for(Unit::SpellAuraHolderMap::const_iterator itr = auras.begin(); itr!=auras.end(); ++itr){
+                    if( itr->second->GetSpellProto()->Id == 31238 )
+                    {
+                        totalDamagePercentMod *= 1.1f;
+                        break;
+                    }
+                    if( itr->second->GetSpellProto()->Id == 31234 )
+                    {
+                        totalDamagePercentMod *= 1.02f;
+                        break;
+                    }
+                    if( itr->second->GetSpellProto()->Id == 31235 )
+                    {
+                        totalDamagePercentMod *= 1.04f;
+                        break;
+                    }
+                    if( itr->second->GetSpellProto()->Id == 31236 )
+                    {
+                        totalDamagePercentMod *= 1.06f;
+                        break;
+                    }
+                    if( itr->second->GetSpellProto()->Id == 31237 )
+                    {
+                        totalDamagePercentMod *= 1.08f;
+                        break;
+                    }
+                }
             }
             break;
         }
@@ -5334,6 +5398,23 @@ void Spell::EffectSanctuary(SpellEffectIndex /*eff_idx*/)
         return;
     //unitTarget->CombatStop();
 
+    std::list<Unit*> targets;
+    MaNGOS::AnyUnfriendlyUnitInObjectRangeCheck u_check(unitTarget, unitTarget, m_caster->GetMap()->GetVisibilityDistance());
+    MaNGOS::UnitListSearcher<MaNGOS::AnyUnfriendlyUnitInObjectRangeCheck> searcher(targets, u_check);
+    Cell::VisitAllObjects(unitTarget, searcher, m_caster->GetMap()->GetVisibilityDistance());
+    for (std::list<Unit*>::iterator iter = targets.begin(); iter != targets.end(); ++iter)
+    {
+        if (!(*iter)->IsNonMeleeSpellCasted(false))
+            continue;
+
+        for (uint32 i = CURRENT_FIRST_NON_MELEE_SPELL; i < CURRENT_MAX_SPELL; i++)
+        {
+            if ((*iter)->GetCurrentSpell(CurrentSpellTypes(i))
+                && (*iter)->GetCurrentSpell(CurrentSpellTypes(i))->m_targets.getUnitTargetGuid() == unitTarget->GetGUIDLow())
+                (*iter)->InterruptSpell(CurrentSpellTypes(CurrentSpellTypes(i)), false);
+        }
+    }
+
     unitTarget->CombatStop();
     unitTarget->getHostileRefManager().deleteReferences();  // stop all fighting
 
@@ -5574,6 +5655,60 @@ void Spell::DoSummonTotem(SpellEffectIndex eff_idx, uint8 slot_dbc)
     }
 
     pTotem->Summon(m_caster);
+}
+
+bool Spell::DoSummonPossessed(SpellEffectIndex eff_idx, uint32 forceFaction)
+{
+    uint32 creatureEntry = m_spellInfo->EffectMiscValue[eff_idx];
+    CreatureInfo const* cInfo = ObjectMgr::GetCreatureTemplate(creatureEntry);
+    if (!cInfo)
+    {
+        sLog.outErrorDb("Spell::DoSummonPossessed: creature entry %u not found for spell %u.", creatureEntry, m_spellInfo->Id);
+        return false;
+    }
+
+    Creature* spawnCreature = m_caster->SummonCreature(creatureEntry, m_targets.m_destX, m_targets.m_destY, m_targets.m_destZ, m_caster->GetOrientation(), TEMPSUMMON_CORPSE_DESPAWN, 0);
+    if (!spawnCreature)
+    {
+        sLog.outError("Spell::DoSummonPossessed: creature entry %u for spell %u could not be summoned.", creatureEntry, m_spellInfo->Id);
+        return false;
+    }
+
+    // Changes to be sent
+    spawnCreature->SetCharmerGuid(m_caster->GetObjectGuid());
+    spawnCreature->SetCreatorGuid(m_caster->GetObjectGuid());
+    spawnCreature->SetUInt32Value(UNIT_CREATED_BY_SPELL, m_spellInfo->Id);
+    spawnCreature->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED);
+
+    spawnCreature->SetLevel(m_caster->getLevel());
+
+    spawnCreature->SetWalk(m_caster->IsWalking());
+    // TODO: Set Fly
+
+    // Internal changes
+    spawnCreature->addUnitState(UNIT_STAT_CONTROLLED);
+
+    // Changes to owner
+    if (m_caster->GetTypeId() == TYPEID_PLAYER)
+    {
+        Player* player = (Player*)m_caster;
+
+        player->GetCamera().SetView(spawnCreature);
+
+        player->SetCharm(spawnCreature);
+        player->SetClientControl(spawnCreature, 1);
+        player->SetMover(spawnCreature);
+
+        if (CharmInfo* charmInfo = spawnCreature->InitCharmInfo(spawnCreature))
+            charmInfo->InitPossessCreateSpells();
+        player->PossessSpellInitialize();
+    }
+
+    // Notify Summoner
+    if (m_originalCaster && m_originalCaster != m_caster && m_originalCaster->GetTypeId() == TYPEID_UNIT && ((Creature*)m_originalCaster)->AI())
+        ((Creature*)m_originalCaster)->AI()->JustSummoned(spawnCreature);
+
+    return true;
 }
 
 void Spell::EffectEnchantHeldItem(SpellEffectIndex eff_idx)
@@ -5831,18 +5966,11 @@ void Spell::EffectLeapForward(SpellEffectIndex eff_idx)
 
     if (m_spellInfo->rangeIndex == 1)                       // self range
     {
-        float dis = GetSpellRadius(sSpellRadiusStore.LookupEntry(m_spellInfo->EffectRadiusIndex[eff_idx]));
+        float spellDist = GetSpellRadius(sSpellRadiusStore.LookupEntry(m_spellInfo->EffectRadiusIndex[eff_idx]));
 
-        // before caster
-        float fx, fy, fz;
-        unitTarget->GetClosePoint(fx, fy, fz, unitTarget->GetObjectBoundingRadius(), dis);
-        float ox, oy, oz;
-        unitTarget->GetPosition(ox, oy, oz);
-
-        if (unitTarget->GetMap()->GetObjectHitPos(ox,oy,oz+0.5f, fx,fy,oz+0.5f,fx,fy,fz, -0.5f))
-            unitTarget->UpdateAllowedPositionZ(fx, fy, fz);
-
-        unitTarget->NearTeleportTo(fx, fy, fz, unitTarget->GetOrientation(), unitTarget == m_caster);
+        WorldLocation destLoc;
+        unitTarget->GetFirstCollisionPosition(destLoc, spellDist, 0.0f);
+        unitTarget->NearTeleportTo(destLoc.coord_x, destLoc.coord_y, (destLoc.coord_z + unitTarget->GetObjectScale()), unitTarget->GetOrientation(), unitTarget == m_caster);
     }
 }
 
@@ -5951,16 +6079,17 @@ void Spell::EffectCharge(SpellEffectIndex /*eff_idx*/)
     if (!unitTarget)
         return;
 
-    //TODO: research more ContactPoint/attack distance.
-    //3.666666 instead of ATTACK_DISTANCE(5.0f) in below seem to give more accurate result.
-    float x, y, z;
-    unitTarget->GetContactPoint(m_caster, x, y, z, 3.666666f);
+    float angle = unitTarget->GetAngle(m_caster) - unitTarget->GetOrientation();
+    WorldLocation pos;
+
+    unitTarget->GetContactPoint(m_caster, pos.coord_x, pos.coord_y, pos.coord_z);
+    unitTarget->GetFirstCollisionPosition(pos, unitTarget->GetObjectScale(), angle);
 
     if (unitTarget->GetTypeId() != TYPEID_PLAYER)
         ((Creature *)unitTarget)->StopMoving();
 
     // Only send MOVEMENTFLAG_WALK_MODE, client has strange issues with other move flags
-    m_caster->MonsterMoveWithSpeed(x, y, z, 24.f, true, true);
+    m_caster->MonsterMoveWithSpeed(pos.coord_x, pos.coord_y, (pos.coord_z + unitTarget->GetObjectScale()), 24.f, true, true);
 
     // not all charge effects used in negative spells
     if (unitTarget != m_caster && !IsPositiveSpell(m_spellInfo->Id))
@@ -6002,7 +6131,7 @@ void Spell::DoSummonCritter(SpellEffectIndex eff_idx, uint32 forceFaction)
     if(!pet_entry)
         return;
 
-    CreatureInfo const* cInfo = sCreatureStorage.LookupEntry<CreatureInfo>(pet_entry);
+    CreatureInfo const* cInfo = ObjectMgr::GetCreatureTemplate(pet_entry);
     if (!cInfo)
     {
         sLog.outErrorDb("Spell::DoSummonCritter: creature entry %u not found for spell %u.", pet_entry, m_spellInfo->Id);
@@ -6412,13 +6541,19 @@ void Spell::EffectSkinPlayerCorpse(SpellEffectIndex /*eff_idx*/)
 
     ((Player*)unitTarget)->RemovedInsignia( (Player*)m_caster );
 }
-
 void Spell::EffectStealBeneficialBuff(SpellEffectIndex eff_idx)
 {
     DEBUG_LOG("Effect: StealBeneficialBuff");
 
     if(!unitTarget || unitTarget==m_caster)                 // can't steal from self
         return;
+
+    //Cause caster & hostile target to enter combat on spellsteal.
+    if (unitTarget->IsHostileTo(m_caster))
+    {
+        m_caster->SetInCombatWith(unitTarget);
+        unitTarget->SetInCombatWith(m_caster);
+    }
 
     typedef std::vector<SpellAuraHolder*> StealList;
     StealList steal_list;
@@ -6435,34 +6570,44 @@ void Spell::EffectStealBeneficialBuff(SpellEffectIndex eff_idx)
                 steal_list.push_back(holder);
         }
     }
-    // Ok if exist some buffs for dispel try dispel it
+    // Ok if exist some buffs for steal try to steal it
     if (!steal_list.empty())
     {
         typedef std::list < std::pair<uint32, ObjectGuid> > SuccessList;
         SuccessList success_list;
         int32 list_size = steal_list.size();
-        // Dispell N = damage buffs (or while exist buffs for dispel)
-        for (int32 count=0; count < damage && list_size > 0; ++count)
+        std::list < uint32 > fail_list;                     // spell_id
+
+        // Random select buff for steal
+        SpellAuraHolder *holder = steal_list[urand(0, list_size-1)];
+        SpellEntry const* spellInfo = holder->GetSpellProto();
+        // Base dispel chance
+        int32 miss_chance = 0;
+        // Apply dispel mod from aura caster
+        if (Unit *caster = holder->GetCaster())
         {
-            // Random select buff for dispel
-            SpellAuraHolder *holder = steal_list[urand(0, list_size-1)];
-            // Not use chance for steal
-            // TODO possible need do it
+            if ( Player* modOwner = caster->GetSpellModOwner() )
+                modOwner->ApplySpellMod(spellInfo->Id, SPELLMOD_RESIST_DISPEL_CHANCE, miss_chance, this);
+        }
+        // Try to steal
+        if (roll_chance_i(miss_chance))
+            fail_list.push_back(spellInfo->Id);
+        else
             success_list.push_back(SuccessList::value_type(holder->GetId(),holder->GetCasterGuid()));
 
-            // Remove buff from list for prevent doubles
-            for (StealList::iterator j = steal_list.begin(); j != steal_list.end(); )
+        // Remove buff from list for prevent doubles
+        for (StealList::iterator j = steal_list.begin(); j != steal_list.end(); )
+        {
+            SpellAuraHolder *stealed = *j;
+            if (stealed->GetId() == holder->GetId() && stealed->GetCasterGuid() == holder->GetCasterGuid())
             {
-                SpellAuraHolder *stealed = *j;
-                if (stealed->GetId() == holder->GetId() && stealed->GetCasterGuid() == holder->GetCasterGuid())
-                {
-                    j = steal_list.erase(j);
-                    --list_size;
-                }
-                else
-                    ++j;
+                j = steal_list.erase(j);
+                --list_size;
             }
+            else
+                ++j;
         }
+
         // Really try steal and send log
         if (!success_list.empty())
         {
@@ -6470,7 +6615,7 @@ void Spell::EffectStealBeneficialBuff(SpellEffectIndex eff_idx)
             WorldPacket data(SMSG_SPELLSTEALLOG, 8+8+4+1+4+count*5);
             data << unitTarget->GetPackGUID();       // Victim GUID
             data << m_caster->GetPackGUID();         // Caster GUID
-            data << uint32(m_spellInfo->Id);         // Dispell spell id
+            data << uint32(m_spellInfo->Id);         // Steal spell id
             data << uint8(0);                        // not used
             data << uint32(count);                   // count
             for (SuccessList::iterator j = success_list.begin(); j != success_list.end(); ++j)
@@ -6480,6 +6625,17 @@ void Spell::EffectStealBeneficialBuff(SpellEffectIndex eff_idx)
                 data << uint8(0);                    // 0 - steals !=0 transfers
                 unitTarget->RemoveAurasDueToSpellBySteal(spellInfo->Id, j->second, m_caster);
             }
+            m_caster->SendMessageToSet(&data, true);
+        }
+        if (!fail_list.empty())
+        {
+            // Failed to steal
+            WorldPacket data(SMSG_DISPEL_FAILED, 8+8+4+4*fail_list.size());
+            data << m_caster->GetObjectGuid();              // Caster GUID
+            data << unitTarget->GetObjectGuid();            // Victim GUID
+            data << uint32(m_spellInfo->Id);                // Steal spell id
+            for (std::list< uint32 >::iterator j = fail_list.begin(); j != fail_list.end(); ++j)
+                data << uint32(*j);                         // Spell Id
             m_caster->SendMessageToSet(&data, true);
         }
     }

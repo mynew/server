@@ -278,7 +278,7 @@ enum SpellAttributesEx
     SPELL_ATTR_EX_NO_THREAT                    = 0x00000400,            // 10 no generates threat on cast 100%
     SPELL_ATTR_EX_UNK11                        = 0x00000800,            // 11
     SPELL_ATTR_EX_UNK12                        = 0x00001000,            // 12
-    SPELL_ATTR_EX_UNK13                        = 0x00002000,            // 13
+    SPELL_ATTR_EX_FARSIGHT                     = 0x00002000,            // 13 related to farsight
     SPELL_ATTR_EX_UNK14                        = 0x00004000,            // 14
     SPELL_ATTR_EX_DISPEL_AURAS_ON_IMMUNITY     = 0x00008000,            // 15 remove auras on immunity
     SPELL_ATTR_EX_UNAFFECTED_BY_SCHOOL_IMMUNE  = 0x00010000,            // 16 unaffected by school immunity
@@ -380,7 +380,7 @@ enum SpellAttributesEx4
     SPELL_ATTR_EX4_UNK4                        = 0x00000010,            // 4 This will no longer cause guards to attack on use??
     SPELL_ATTR_EX4_UNK5                        = 0x00000020,            // 5
     SPELL_ATTR_EX4_NOT_STEALABLE               = 0x00000040,            // 6 although such auras might be dispellable, they cannot be stolen
-    SPELL_ATTR_EX4_UNK7                        = 0x00000080,            // 7
+    SPELL_ATTR_EX4_TRIGGERED                   = 0x00000080,            // 7 spells forced to be triggered
     SPELL_ATTR_EX4_STACK_DOT_MODIFIER          = 0x00000100,            // 8 no effect on non DoTs?
     SPELL_ATTR_EX4_UNK9                        = 0x00000200,            // 9
     SPELL_ATTR_EX4_SPELL_VS_EXTEND_COST        = 0x00000400,            // 10 Rogue Shiv have this flag
@@ -453,7 +453,7 @@ enum SpellAttributesEx6
     SPELL_ATTR_EX6_UNK5                        = 0x00000020,            // 5
     SPELL_ATTR_EX6_UNK6                        = 0x00000040,            // 6
     SPELL_ATTR_EX6_UNK7                        = 0x00000080,            // 7
-    SPELL_ATTR_EX6_UNK8                        = 0x00000100,            // 8
+    SPELL_ATTR_EX6_IGNORE_CC_TARGETS           = 0x00000100,            // 8 ignores target with cc effects
     SPELL_ATTR_EX6_UNK9                        = 0x00000200,            // 9
     SPELL_ATTR_EX6_UNK10                       = 0x00000400,            // 10
     SPELL_ATTR_EX6_NOT_IN_RAID_INSTANCE        = 0x00000800,            // 11 not usable in raid instance
@@ -546,6 +546,8 @@ enum Language
 enum Team
 {
     TEAM_NONE           = 0,                                // used when team value unknown or not set, 0 is also meaning that can be used !team check
+    TEAM_BOTH_ALLOWED   = 0,                                // used when a check should evaluate true for both teams
+    TEAM_INVALID        = 1,                                // used to invalidate some team depending checks (means not for both teams)
     HORDE               = 67,
     ALLIANCE            = 469,
 };
@@ -924,7 +926,6 @@ enum Mechanics
     MECHANIC_FUMBLE           = 6,
     MECHANIC_ROOT             = 7,
     MECHANIC_PACIFY           = 8,                          //0 spells use this mechanic
-    MECHANIC_SILENCE          = 9,
     MECHANIC_SLEEP            = 10,
     MECHANIC_SNARE            = 11,
     MECHANIC_STUN             = 12,
@@ -2250,7 +2251,8 @@ enum PetDiet
 
 #define MAX_PET_DIET 9
 
-#define CHAIN_SPELL_JUMP_RADIUS 10
+#define CHAIN_SPELL_JUMP_RADIUS 20
+#define CHAIN_HEAL_JUMP_RADIUS 40
 
 // Max values for Guild & Guild Bank
 #define GUILD_BANK_MAX_TABS         6                       // send by client for money log also
@@ -2300,7 +2302,6 @@ enum DiminishingGroup
     // Shared Class Specific
     DIMINISHING_BLIND_CYCLONE,                              // From 2.3.0
     DIMINISHING_DISARM,                                     // From 2.3.0
-    DIMINISHING_SILENCE,                                    // From 2.3.0
     DIMINISHING_FREEZE,                                     // Hunter's Freezing Trap
     DIMINISHING_KNOCKOUT,                                   // Also with Sap, all Knockout mechanics are here
     DIMINISHING_BANISH,

@@ -124,6 +124,7 @@ enum eConfigUInt32Values
     CONFIG_UINT32_GM_INVISIBLE_AURA,
     CONFIG_UINT32_GROUP_VISIBILITY,
     CONFIG_UINT32_MAIL_DELIVERY_DELAY,
+    CONFIG_UINT32_EXTERNAL_MAIL_INTERVAL,
     CONFIG_UINT32_MASS_MAILER_SEND_PER_TICK,
     CONFIG_UINT32_UPTIME_UPDATE,
     CONFIG_UINT32_AUCTION_DEPOSIT_MIN,
@@ -250,6 +251,7 @@ enum eConfigFloatValues
     CONFIG_FLOAT_RATE_DURABILITY_LOSS_PARRY,
     CONFIG_FLOAT_RATE_DURABILITY_LOSS_ABSORB,
     CONFIG_FLOAT_RATE_DURABILITY_LOSS_BLOCK,
+    CONFIG_FLOAT_RATE_PVP_RANK_EXTRA_HONOR,
     CONFIG_FLOAT_SIGHT_GUARDER,
     CONFIG_FLOAT_SIGHT_MONSTER,
     CONFIG_FLOAT_LISTEN_RANGE_SAY,
@@ -268,6 +270,7 @@ enum eConfigFloatValues
 enum eConfigBoolValues
 {
     CONFIG_BOOL_GRID_UNLOAD = 0,
+    CONFIG_BOOL_EXTERNAL_MAIL,
     CONFIG_BOOL_SAVE_RESPAWN_TIME_IMMEDIATELY,
     CONFIG_BOOL_OFFHAND_CHECK_AT_TALENTS_RESET,
     CONFIG_BOOL_ALLOW_TWO_SIDE_ACCOUNTS,
@@ -319,6 +322,26 @@ enum eConfigBoolValues
     CONFIG_BOOL_PET_UNSUMMON_AT_MOUNT,
     CONFIG_BOOL_MMAP_ENABLED,
     CONFIG_BOOL_VALUE_COUNT
+};
+
+enum HonorKillPvPRank
+{
+    HKRANK00,
+    HKRANK01,
+    HKRANK02,
+    HKRANK03,
+    HKRANK04,
+    HKRANK05,
+    HKRANK06,
+    HKRANK07,
+    HKRANK08,
+    HKRANK09,
+    HKRANK10,
+    HKRANK11,
+    HKRANK12,
+    HKRANK13,
+    HKRANK14,
+    HKRANKMAX
 };
 
 /// Can be used in SMSG_AUTH_RESPONSE packet
@@ -496,6 +519,8 @@ class World
         void SendZoneText(uint32 zone, const char* text, WorldSession* self = NULL, Team team = TEAM_NONE);
         void SendServerMessage(ServerMessageType type, const char* text = "", Player* player = NULL);
 
+        uint32 pvp_ranks[HKRANKMAX];
+
         /// Are we in the middle of a shutdown?
         bool IsShutdowning() const { return m_ShutdownTimer > 0; }
         void ShutdownServ(uint32 time, uint32 options, uint8 exitcode);
@@ -598,6 +623,7 @@ class World
         time_t m_startTime;
         time_t m_gameTime;
         IntervalTimer m_timers[WUPDATE_COUNT];
+        IntervalTimer extmail_timer;
         uint32 mail_timer;
         uint32 mail_timer_expires;
 

@@ -1576,41 +1576,59 @@ void Aura::TriggerSpell()
                 break;
             }
 
-//            case SPELLFAMILY_HUNTER:
-//            {
-//                switch(auraId)
-//                {
-//                    //Frost Trap Aura
-//                    case 13810:
-//                        return;
-//                    //Rizzle's Frost Trap
-//                    case 39900:
-//                        return;
-//                    // Tame spells
-//                    case 19597:         // Tame Ice Claw Bear
-//                    case 19676:         // Tame Snow Leopard
-//                    case 19677:         // Tame Large Crag Boar
-//                    case 19678:         // Tame Adult Plainstrider
-//                    case 19679:         // Tame Prairie Stalker
-//                    case 19680:         // Tame Swoop
-//                    case 19681:         // Tame Dire Mottled Boar
-//                    case 19682:         // Tame Surf Crawler
-//                    case 19683:         // Tame Armored Scorpid
-//                    case 19684:         // Tame Webwood Lurker
-//                    case 19685:         // Tame Nightsaber Stalker
-//                    case 19686:         // Tame Strigid Screecher
-//                    case 30100:         // Tame Crazed Dragonhawk
-//                    case 30103:         // Tame Elder Springpaw
-//                    case 30104:         // Tame Mistbat
-//                    case 30647:         // Tame Barbed Crawler
-//                    case 30648:         // Tame Greater Timberstrider
-//                    case 30652:         // Tame Nightstalker
-//                        return;
-//                    default:
-//                        break;
-//                }
-//                break;
-//            }
+            case SPELLFAMILY_HUNTER:
+            {
+                switch(auraId)
+                {
+                    // Frost Trap Aura
+                case 13810:
+                    // Explosive Trap Effect
+                case 13812: // Rank 1
+                case 14314: // Rank 2
+                case 14315: // Rank 3
+                case 27026: // Rank 4
+                    // Immolation Trap Effect
+                case 13797: // Rank 1
+                case 14298: // Rank 2
+                case 14299: // Rank 3
+                case 14300: // Rank 4
+                case 14301: // Rank 5
+                case 27024: // Rank 6
+                    {
+                        Unit* caster = GetCaster();
+                        if(caster->GetTypeId()== TYPEID_PLAYER)
+                        {
+
+                            // Chance to entrap the target
+                            float EntraptChance = 0;
+                            // Look for coefficient EntraptChance
+                            Unit::AuraList const& AuraTriggerSpell = caster->GetAurasByType(SPELL_AURA_PROC_TRIGGER_SPELL);
+                            for(Unit::AuraList::const_iterator i = AuraTriggerSpell.begin(); i != AuraTriggerSpell.end(); ++i)
+                            {
+                                switch((*i)->GetSpellProto()->Id)
+                                {
+                                    case 19384:
+                                    case 19387:
+                                    case 19388:
+                                        if( EntraptChance < (*i)->GetSpellProto()->procChance)
+                                            EntraptChance = (*i)->GetSpellProto()->procChance;
+                                }
+
+                            }
+                            // If chance -> entrap target.
+                            if( roll_chance_f(EntraptChance))
+                            {
+                                trigger_spell_id = 19185;
+                            }
+                            else
+                                return;
+                        }
+                    }
+                default:
+                    break;
+                }
+                break;
+            }
             case SPELLFAMILY_SHAMAN:
             {
                 switch(auraId)
@@ -2542,6 +2560,9 @@ void Aura::HandleAuraMounted(bool apply, bool Real)
         if (minfo)
             display_id = minfo->modelid;
 
+        // Remove stealth before mounting
+        target->RemoveSpellsCausingAura(SPELL_AURA_MOD_STEALTH);
+
         target->Mount(display_id, GetId());
     }
     else
@@ -2702,7 +2723,7 @@ void Aura::HandleAuraModShapeshift(bool apply, bool Real)
         target->RemoveSpellsCausingAura(SPELL_AURA_MOD_SHAPESHIFT, GetHolder());
 
         // need send to client not form active state, or at re-apply form client go crazy
-        // target->SendForcedObjectUpdate();                -- not need in pre-3.x
+        target->SendForcedObjectUpdate(); // I think this is the reason to screen freezes. Will do testing with this.
 
         if (modelid > 0)
             target->SetDisplayId(modelid);
@@ -3511,6 +3532,26 @@ void Aura::HandleFeignDeath(bool apply, bool Real)
     if(!Real)
         return;
 
+    Unit *target = GetTarget();
+    Unit *caster = GetCaster(); // there is also a spell wich has TARGET_RANDOM_ENEMY_CHAIN_IN_AREA but it's unused. so not really necessary
+
+    std::list<Unit*> targets;
+    MaNGOS::AnyUnfriendlyUnitInObjectRangeCheck u_check(target, target, caster->GetMap()->GetVisibilityDistance());
+    MaNGOS::UnitListSearcher<MaNGOS::AnyUnfriendlyUnitInObjectRangeCheck> searcher(targets, u_check);
+    Cell::VisitAllObjects(target, searcher, caster->GetMap()->GetVisibilityDistance());
+    for (std::list<Unit*>::iterator iter = targets.begin(); iter != targets.end(); ++iter)
+    {
+        if (!(*iter)->IsNonMeleeSpellCasted(false))
+            continue;
+
+        for (uint32 i = CURRENT_FIRST_NON_MELEE_SPELL; i < CURRENT_MAX_SPELL; i++)
+        {
+            if ((*iter)->GetCurrentSpell(CurrentSpellTypes(i))
+                && (*iter)->GetCurrentSpell(CurrentSpellTypes(i))->m_targets.getUnitTargetGuid() == target->GetGUIDLow())
+                (*iter)->InterruptSpell(CurrentSpellTypes(CurrentSpellTypes(i)), false);
+        }
+    }
+
     GetTarget()->SetFeignDeath(apply, GetCasterGuid(), GetId());
 }
 
@@ -4184,8 +4225,6 @@ void Aura::HandleModMechanicImmunity(bool apply, bool /*Real*/)
                 {
                     if (apply)
                         owner->CastSpell(owner, 34471, true, NULL, this);
-                    else
-                        owner->RemoveAurasDueToSpell(34471);
                     break;
                 }
             }
@@ -5545,6 +5584,9 @@ void Aura::HandleShapeshiftBoosts(bool apply)
         {
             if (itr->second->IsRemovedOnShapeLost())
             {
+                if (form == FORM_SHADOW)
+                    return;
+
                 target->RemoveAurasDueToSpell(itr->second->GetId());
                 itr = tAuras.begin();
             }
@@ -6321,7 +6363,7 @@ void Aura::PeriodicTick()
             // Anger Management
             // amount = 1+ 16 = 17 = 3,4*5 = 10,2*5/3
             // so 17 is rounded amount for 5 sec tick grow ~ 1 range grow in 3 sec
-            if(pt == POWER_RAGE)
+            if (pt == POWER_RAGE && target->GetPower(POWER_RAGE) > 0)
                 target->ModifyPower(pt, m_modifier.m_amount * 3 / 5);
             break;
         }
@@ -6742,6 +6784,12 @@ m_permanent(false), m_isRemovedOnShapeLost(true), m_deleted(false), m_in_use(0)
                               m_spellProto->Stances &&
                               !m_spellProto->HasAttribute(SPELL_ATTR_EX2_NOT_NEED_SHAPESHIFT) &&
                               !m_spellProto->HasAttribute(SPELL_ATTR_NOT_SHAPESHIFT));
+
+    //Do not allow remove WeakenedSoul when shifting out Shadowform &
+    //Berserker Rage/Sweeping Strikes when switching stances.
+    if (GetId() == 6788 || GetId() == 18499 || GetId() == 12328 || GetId() == 18765 || 
+        GetId() == 35429 || GetId() == 26654)
+        m_isRemovedOnShapeLost = false;
 
     Unit* unitCaster = caster && caster->isType(TYPEMASK_UNIT) ? (Unit*)caster : NULL;
 

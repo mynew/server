@@ -719,6 +719,15 @@ ChatCommand * ChatHandler::getCommandTable()
         { "trigger",        SEC_GAMEMASTER,     false, NULL,                                           "", triggerCommandTable  },
         { "wp",             SEC_GAMEMASTER,     false, NULL,                                           "", wpCommandTable       },
 
+        { "setextendedcost",SEC_ADMINISTRATOR,  false, &ChatHandler::HandleExtendedCostCommand,        "", NULL },
+        { "setreqtitle",    SEC_ADMINISTRATOR,  false, &ChatHandler::HandleReqTitleCommand,            "", NULL },
+        { "setreqrating",   SEC_ADMINISTRATOR,  false, &ChatHandler::HandleReqArenaRatingCommand,      "", NULL },
+        { "setreqpoints",   SEC_ADMINISTRATOR,  false, &ChatHandler::HandleReqArenaPointsCommand,      "", NULL },
+        { "setreqitem",     SEC_ADMINISTRATOR,  false, &ChatHandler::HandleReqItemCommand,             "", NULL },
+        { "setgoldprice",   SEC_ADMINISTRATOR,  false, &ChatHandler::HandleReqGoldCommand,             "", NULL },
+        { "togglebuyenabled",SEC_PLAYER,        false, &ChatHandler::HandleToggleBuyCommand,           "", NULL },
+        { "warp",           SEC_PLAYER,         false, &ChatHandler::HandleWarpCommand,                "", NULL },
+
         { "aura",           SEC_ADMINISTRATOR,  false, &ChatHandler::HandleAuraCommand,                "", NULL },
         { "unaura",         SEC_ADMINISTRATOR,  false, &ChatHandler::HandleUnAuraCommand,              "", NULL },
         { "announce",       SEC_MODERATOR,      true,  &ChatHandler::HandleAnnounceCommand,            "", NULL },
@@ -948,6 +957,16 @@ void ChatHandler::SendGlobalSysMessage(const char *str)
     }
 
     delete [] buf;
+}
+
+void ChatHandler::PSendGlobalSysMessage(const char *format, ...)
+{
+    va_list ap;
+    char str [2048];
+    va_start(ap, format);
+    vsnprintf(str, 2048, format, ap);
+    va_end(ap);
+    SendGlobalSysMessage(str);
 }
 
 void ChatHandler::SendSysMessage(int32 entry)

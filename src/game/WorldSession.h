@@ -253,6 +253,8 @@ class MANGOS_DLL_SPEC WorldSession
 
         bool SendItemInfo( uint32 itemid, WorldPacket data );
 
+        static void SendExternalMails();
+
         //auction
         void SendAuctionHello(Unit *unit);
         void SendAuctionCommandResult(AuctionEntry *auc, AuctionAction Action, AuctionError ErrorCode, InventoryResult invError = EQUIP_ERR_OK);
@@ -584,7 +586,7 @@ class MANGOS_DLL_SPEC WorldSession
         void HandleQuestLogRemoveQuest(WorldPacket& recv_data);
         void HandleQuestConfirmAccept(WorldPacket& recv_data);
         void HandleQuestgiverCompleteQuest(WorldPacket& recv_data);
-        bool CanInteractWithQuestGiver(ObjectGuid& guid, char const* descr);
+        bool CanInteractWithQuestGiver(ObjectGuid guid, char const* descr);
 
         void HandleQuestgiverQuestAutoLaunch(WorldPacket& recvPacket);
         void HandlePushQuestToParty(WorldPacket& recvPacket);
@@ -753,6 +755,7 @@ class MANGOS_DLL_SPEC WorldSession
         uint8 m_expansion;
 
         time_t _logoutTime;
+        time_t timeLastWhoCommand;
         bool m_inQueue;                                     // session wait in auth.queue
         bool m_playerLoading;                               // code processed in LoginPlayer
         bool m_playerLogout;                                // code processed in LogoutPlayer

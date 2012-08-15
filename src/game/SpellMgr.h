@@ -27,7 +27,6 @@
 #include "SpellAuraDefines.h"
 #include "DBCStructure.h"
 #include "DBCStores.h"
-#include "SQLStorages.h"
 
 #include "Utilities/UnorderedMapSet.h"
 
@@ -71,6 +70,7 @@ enum SpellSpecific
     SPELL_FOOD              = 20,
     SPELL_DRINK             = 21,
     SPELL_FOOD_AND_DRINK    = 22,
+    SPELL_ARMOR_REDUCE      = 23,
 };
 
 SpellSpecific GetSpellSpecific(uint32 spellId);
@@ -782,17 +782,7 @@ typedef std::pair<SkillLineAbilityMap::const_iterator,SkillLineAbilityMap::const
 typedef std::multimap<uint32, SkillRaceClassInfoEntry const*> SkillRaceClassInfoMap;
 typedef std::pair<SkillRaceClassInfoMap::const_iterator,SkillRaceClassInfoMap::const_iterator> SkillRaceClassInfoMapBounds;
 
-inline bool IsPrimaryProfessionSkill(uint32 skill)
-{
-    SkillLineEntry const *pSkill = sSkillLineStore.LookupEntry(skill);
-    if(!pSkill)
-        return false;
-
-    if(pSkill->categoryId != SKILL_CATEGORY_PROFESSION)
-        return false;
-
-    return true;
-}
+bool IsPrimaryProfessionSkill(uint32 skill);
 
 inline bool IsProfessionSkill(uint32 skill)
 {

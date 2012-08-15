@@ -54,6 +54,20 @@ class DungeonPersistentState;
 class Spell;
 class Item;
 
+enum TransmogrificationResult
+{
+    ERR_FAKE_NEW_BAD_QUALITY,
+    ERR_FAKE_OLD_BAD_QUALITY,
+    ERR_FAKE_SAME_DISPLAY,
+    ERR_FAKE_SAME_DISPLAY_FAKE,
+    ERR_FAKE_CANT_USE,
+    ERR_FAKE_NOT_SAME_CLASS,
+    ERR_FAKE_BAD_CLASS,
+    ERR_FAKE_BAD_SUBLCASS,
+    ERR_FAKE_BAD_INVENTORYTYPE,
+    ERR_FAKE_OK
+};
+
 typedef std::deque<Mail*> PlayerMails;
 
 #define PLAYER_MAX_SKILLS           127
@@ -405,6 +419,27 @@ enum PlayerFlags
     PLAYER_FLAGS_TAXI_BENCHMARK         = 0x00020000,       // taxi benchmark mode (on/off) (2.0.1)
     PLAYER_FLAGS_PVP_TIMER              = 0x00040000,       // 3.0.2, pvp timer active (after you disable pvp manually)
 };
+
+#define PLAYER_TITLE_MASK_ALLIANCE_PVP             \
+    ( PLAYER_TITLE_PRIVATE | PLAYER_TITLE_CORPORAL |  \
+      PLAYER_TITLE_SERGEANT_A | PLAYER_TITLE_MASTER_SERGEANT | \
+      PLAYER_TITLE_SERGEANT_MAJOR | PLAYER_TITLE_KNIGHT | \
+      PLAYER_TITLE_KNIGHT_LIEUTENANT | PLAYER_TITLE_KNIGHT_CAPTAIN | \
+      PLAYER_TITLE_KNIGHT_CHAMPION | PLAYER_TITLE_LIEUTENANT_COMMANDER | \
+      PLAYER_TITLE_COMMANDER | PLAYER_TITLE_MARSHAL | \
+      PLAYER_TITLE_FIELD_MARSHAL | PLAYER_TITLE_GRAND_MARSHAL )
+
+#define PLAYER_TITLE_MASK_HORDE_PVP                           \
+    ( PLAYER_TITLE_SCOUT | PLAYER_TITLE_GRUNT |  \
+      PLAYER_TITLE_SERGEANT_H | PLAYER_TITLE_SENIOR_SERGEANT | \
+      PLAYER_TITLE_FIRST_SERGEANT | PLAYER_TITLE_STONE_GUARD | \
+      PLAYER_TITLE_BLOOD_GUARD | PLAYER_TITLE_LEGIONNAIRE | \
+      PLAYER_TITLE_CENTURION | PLAYER_TITLE_CHAMPION | \
+      PLAYER_TITLE_LIEUTENANT_GENERAL | PLAYER_TITLE_GENERAL | \
+      PLAYER_TITLE_WARLORD | PLAYER_TITLE_HIGH_WARLORD )
+
+#define PLAYER_TITLE_MASK_ALL_PVP  \
+    ( PLAYER_TITLE_MASK_ALLIANCE_PVP | PLAYER_TITLE_MASK_HORDE_PVP )
 
 // used for PLAYER__FIELD_KNOWN_TITLES field (uint64), (1<<bit_index) without (-1)
 // can't use enum for uint64 values
@@ -938,6 +973,89 @@ class MANGOS_DLL_SPEC Player : public Unit
         explicit Player (WorldSession *session);
         ~Player ( );
 
+
+        /* - Custom */
+    private:
+        uint8  ItemInsurance;
+        uint32  ItemInsuranceCharges;
+        int32   KillBounty;
+
+        bool    Hardcore;
+        bool    BuyEnabled;
+        uint32  KillStreak;
+
+        uint32  ALastGuid;
+        uint32  ALastGuidCount;
+        uint32  VLastGuid;
+        uint32  VLastGuidCount;
+    public:
+        void    HandlePvPKill();
+        void    HandleHardcoreKill(Player* attacker);
+        bool    HandlePvPAntifarm(Player* victim);
+
+        float   GetKillStreak() { return KillStreak; }
+        void    IncreaseKillStreak() { ++KillStreak; }
+        void    ClearKillStreak() { KillStreak = 0; }
+
+        uint32  GetLastAttackerGUID() { return ALastGuid; }
+        uint32  GetLastAttackerGUIDCount() { return ALastGuidCount; }
+        void    SetAttackerLastGUID(uint64 GUID) { ALastGuid = GUID; }
+        void    IncreaseAttackerLastGUIDCount() { ++ALastGuidCount; }
+        void    ClearAttackerGUID() { ALastGuid = 0; ALastGuidCount = 0; }
+
+        uint32  GetLastVictimGUID() { return VLastGuid; }
+        uint32  GetLastVictimGUIDCount() { return VLastGuidCount; }
+        void    SetVictimLastGUID(uint64 GUID) { VLastGuid = GUID; }
+        void    IncreaseVictimLastGUIDCount() { ++VLastGuidCount; }
+        void    ClearVictimGUID() { VLastGuid = 0; VLastGuidCount = 0; }
+
+        uint32  GetBounty() { return KillBounty; }
+        void    SetBounty(int32 Bounty) { KillBounty = Bounty; }
+        void    ClearBounty() { KillBounty = 0; }
+
+        uint32  GetInsurance() { return ItemInsurance; }
+        uint32  GetInsuranceCharges() { return ItemInsuranceCharges; }
+        void    SetInsuranceLevel(uint8 Level) { ItemInsurance = Level; }
+        void    SetInsuranceCharges(uint32 Charges) { ItemInsuranceCharges = Charges; }
+
+        std::map<uint64, uint32> m_Damagers;
+        void    Damaged(uint64 guid, uint32 damage) { m_Damagers[guid] += damage; }
+
+        std::map<uint64, uint32> m_Healers;
+        void    Healed(uint64 guid, uint32 healing) { m_Healers[guid] += healing; }
+
+        bool    GetBuyEnabled() { return BuyEnabled; }
+        void    ToggleBuyEnabled()
+        {
+            if(BuyEnabled)
+                BuyEnabled = false;
+            else
+                BuyEnabled = true;
+        }
+        bool    GetHardcore() { return Hardcore; }
+        void    ToggleHardcore()
+        {
+            if(Hardcore)
+                Hardcore = false;
+            else
+                Hardcore = true;
+        }
+
+        uint32  SuitableForTransmogrification(Item* pOld, Item* pNew);
+
+        bool    AddAura(uint32 spellID);
+
+        std::string GetNameLink()
+        {
+            std::string name = GetName();
+            return "|Hplayer:"+name+"|h["+name+"]|h";
+        }
+
+        void    InGamemasterGossip(Creature *pCreature);
+
+        void    CreatePet(uint32 cEntry);
+        /* Custom - */
+
         void CleanupsBeforeDelete();
 
         static UpdateMask updateVisualBits;
@@ -981,7 +1099,7 @@ class MANGOS_DLL_SPEC Player : public Unit
         void SendTransferAborted(uint32 mapid, uint8 reason, uint8 arg = 0);
         void SendInstanceResetWarning(uint32 mapid, uint32 time);
 
-        Creature* GetNPCIfCanInteractWith(ObjectGuid guid, uint32 npcflagmask);
+        Creature* GetNPCIfCanInteractWith(ObjectGuid guid, uint32 npcflagmask,bool is3D = true);
         GameObject* GetGameObjectIfCanInteractWith(ObjectGuid guid, uint32 gameobject_type = MAX_GAMEOBJECT_TYPE) const;
 
         void ToggleAFK();
@@ -1077,6 +1195,7 @@ class MANGOS_DLL_SPEC Player : public Unit
         Item* GetItemByGuid(ObjectGuid guid) const;
         Item* GetItemByPos( uint16 pos ) const;
         Item* GetItemByPos( uint8 bag, uint8 slot ) const;
+        Bag*  GetBagByPos(uint8 slot) const;
         uint32 GetItemDisplayIdInSlot(uint8 bag, uint8 slot) const;
         Item* GetWeaponForAttack(WeaponAttackType attackType) const { return GetWeaponForAttack(attackType,false,false); }
         Item* GetWeaponForAttack(WeaponAttackType attackType, bool nonbroken, bool useable) const;
@@ -1820,6 +1939,8 @@ class MANGOS_DLL_SPEC Player : public Unit
 
         uint32 GetMaxPersonalArenaRatingRequirement();
 
+        void UpdateKnownTitles();
+
         //End of PvP System
 
         void SetDrunkValue(uint16 newDrunkValue, uint32 itemid=0);
@@ -1993,7 +2114,14 @@ class MANGOS_DLL_SPEC Player : public Unit
         bool GetBGAccessByLevel(BattleGroundTypeId bgTypeId) const;
         bool CanUseBattleGroundObject();
         bool isTotalImmune();
-        bool CanCaptureTowerPoint();
+        bool CanUseCapturePoint();
+
+        /*********************************************************/
+        /***                 WORLD PVP SYSTEM                  ***/
+        /*********************************************************/
+
+        // returns true if the player is in active state for outdoor pvp objective capturing
+        bool CanUseOutdoorCapturePoint();
 
         /*********************************************************/
         /***                    REST SYSTEM                    ***/

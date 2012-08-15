@@ -56,6 +56,7 @@
 #include "DBCStores.h"
 #include "CreatureEventAIMgr.h"
 #include "AuctionHouseBot/AuctionHouseBot.h"
+#include "SQLStorages.h"
 
 static uint32 ahbotQualityIds[MAX_AUCTION_QUALITY] =
 {
@@ -3623,7 +3624,7 @@ bool ChatHandler::HandleLinkGraveCommand(char* args)
 
     Team g_team;
     if (!teamStr)
-        g_team = TEAM_NONE;
+        g_team = TEAM_BOTH_ALLOWED;
     else if (strncmp(teamStr, "horde", strlen(teamStr))==0)
         g_team = HORDE;
     else if (strncmp(teamStr, "alliance", strlen(teamStr))==0)
@@ -3631,8 +3632,7 @@ bool ChatHandler::HandleLinkGraveCommand(char* args)
     else
         return false;
 
-    WorldSafeLocsEntry const* graveyard =  sWorldSafeLocsStore.LookupEntry(g_id);
-
+    WorldSafeLocsEntry const* graveyard = sWorldSafeLocsStore.LookupEntry(g_id);
     if (!graveyard )
     {
         PSendSysMessage(LANG_COMMAND_GRAVEYARDNOEXIST, g_id);
@@ -3644,10 +3644,10 @@ bool ChatHandler::HandleLinkGraveCommand(char* args)
 
     uint32 zoneId = player->GetZoneId();
 
-    AreaTableEntry const *areaEntry = GetAreaEntryByAreaID(zoneId);
+    AreaTableEntry const* areaEntry = GetAreaEntryByAreaID(zoneId);
     if (!areaEntry || areaEntry->zone !=0)
     {
-        PSendSysMessage(LANG_COMMAND_GRAVEYARDWRONGZONE, g_id,zoneId);
+        PSendSysMessage(LANG_COMMAND_GRAVEYARDWRONGZONE, g_id, zoneId);
         SetSentErrorMessage(true);
         return false;
     }
@@ -3667,7 +3667,7 @@ bool ChatHandler::HandleNearGraveCommand(char* args)
     size_t argslen = strlen(args);
 
     if(!*args)
-        g_team = TEAM_NONE;
+        g_team = TEAM_BOTH_ALLOWED;
     else if (strncmp(args, "horde", argslen) == 0)
         g_team = HORDE;
     else if (strncmp(args, "alliance", argslen) == 0)
@@ -3678,49 +3678,48 @@ bool ChatHandler::HandleNearGraveCommand(char* args)
     Player* player = m_session->GetPlayer();
     uint32 zone_id = player->GetZoneId();
 
-    WorldSafeLocsEntry const* graveyard = sObjectMgr.GetClosestGraveYard(
-        player->GetPositionX(), player->GetPositionY(), player->GetPositionZ(), player->GetMapId(), g_team);
+    WorldSafeLocsEntry const* graveyard = sObjectMgr.GetClosestGraveYard(player->GetPositionX(), player->GetPositionY(), player->GetPositionZ(), player->GetMapId(), g_team);
 
-    if(graveyard)
+    if (graveyard)
     {
         uint32 g_id = graveyard->ID;
 
-        GraveYardData const* data = sObjectMgr.FindGraveYardData(g_id,zone_id);
+        GraveYardData const* data = sObjectMgr.FindGraveYardData(g_id, zone_id);
         if (!data)
         {
-            PSendSysMessage(LANG_COMMAND_GRAVEYARDERROR,g_id);
+            PSendSysMessage(LANG_COMMAND_GRAVEYARDERROR, g_id);
             SetSentErrorMessage(true);
             return false;
         }
 
-        g_team = data->team;
+        std::string team_name;
 
-        std::string team_name = GetMangosString(LANG_COMMAND_GRAVEYARD_NOTEAM);
-
-        if(g_team == 0)
+        if (data->team == TEAM_BOTH_ALLOWED)
             team_name = GetMangosString(LANG_COMMAND_GRAVEYARD_ANY);
-        else if(g_team == HORDE)
+        else if (data->team == HORDE)
             team_name = GetMangosString(LANG_COMMAND_GRAVEYARD_HORDE);
-        else if(g_team == ALLIANCE)
+        else if (data->team == ALLIANCE)
             team_name = GetMangosString(LANG_COMMAND_GRAVEYARD_ALLIANCE);
+        else                                                                // Actually, this case cannot happen
+            team_name = GetMangosString(LANG_COMMAND_GRAVEYARD_NOTEAM);
 
-        PSendSysMessage(LANG_COMMAND_GRAVEYARDNEAREST, g_id,team_name.c_str(),zone_id);
+        PSendSysMessage(LANG_COMMAND_GRAVEYARDNEAREST, g_id, team_name.c_str(), zone_id);
     }
     else
     {
         std::string team_name;
 
-        if(g_team == 0)
+        if (g_team == TEAM_BOTH_ALLOWED)
             team_name = GetMangosString(LANG_COMMAND_GRAVEYARD_ANY);
-        else if(g_team == HORDE)
+        else if (g_team == HORDE)
             team_name = GetMangosString(LANG_COMMAND_GRAVEYARD_HORDE);
-        else if(g_team == ALLIANCE)
+        else if (g_team == ALLIANCE)
             team_name = GetMangosString(LANG_COMMAND_GRAVEYARD_ALLIANCE);
 
-        if(g_team == ~uint32(0))
+        if (g_team == TEAM_BOTH_ALLOWED)
             PSendSysMessage(LANG_COMMAND_ZONENOGRAVEYARDS, zone_id);
         else
-            PSendSysMessage(LANG_COMMAND_ZONENOGRAFACTION, zone_id,team_name.c_str());
+            PSendSysMessage(LANG_COMMAND_ZONENOGRAFACTION, zone_id, team_name.c_str());
     }
 
     return true;
@@ -6609,5 +6608,125 @@ bool ChatHandler::HandleMmapTestArea(char* args)
         PSendSysMessage("No creatures in %f yard range.", radius);
     }
 
+    return true;
+}
+
+bool ChatHandler::HandleExtendedCostCommand(char* args)
+{
+    uint32 extendedcost;
+    if (!ExtractUInt32(&args,extendedcost))
+        return false;
+
+    uint32 itemid;
+    if (!ExtractUint32KeyFromLink(&args, "Hitem", itemid))
+        return false;
+
+    Item* pItem = Item::CreateItem(itemid, 1);
+    if (!pItem)
+        return false;
+
+    WorldDatabase.PExecute("UPDATE npc_vendor SET extendedcost = %u WHERE item = %u",extendedcost,itemid);
+    PSendSysMessage("Updated extendedcost to %u on %s",extendedcost,pItem->GetNameLink(true).c_str());
+    return true;
+}
+
+bool ChatHandler::HandleReqTitleCommand(char* args)
+{
+    uint32 titleid;
+    if (!ExtractUInt32(&args,titleid))
+        return false;
+
+    uint32 itemid;
+    if (!ExtractUint32KeyFromLink(&args, "Hitem", itemid))
+        return false;
+
+    Item* pItem = Item::CreateItem(itemid, 1);
+    if (!pItem)
+        return false;
+
+    WorldDatabase.PExecute("UPDATE item_template SET requiredhonorrank = %u WHERE entry = %u",titleid,itemid);
+    PSendSysMessage("Updated required title to %u on %s",titleid,pItem->GetNameLink(true).c_str());
+    PSendSysMessage("Remember: Rank ranks are differing +4, so rank 14 should be entered as 18, rank one as 5 etc.");
+    return true;
+}
+
+bool ChatHandler::HandleReqArenaRatingCommand(char* args)
+{
+    uint32 rating;
+    if (!ExtractUInt32(&args,rating))
+        return false;
+
+    uint32 itemid;
+    if (!ExtractUint32KeyFromLink(&args, "Hitem", itemid))
+        return false;
+
+    Item* pItem = Item::CreateItem(itemid, 1);
+    if (!pItem)
+        return false;
+
+    WorldDatabase.PExecute("UPDATE npc_vendor SET ReqArenaRating = %u WHERE item = %u",rating,itemid);
+    PSendSysMessage("Updated required arena rating to %u on %s",rating,pItem->GetNameLink(true).c_str());
+    return true;
+}
+
+bool ChatHandler::HandleReqArenaPointsCommand(char* args)
+{
+    uint32 points;
+    if (!ExtractUInt32(&args,points))
+        return false;
+
+    uint32 itemid;
+    if (!ExtractUint32KeyFromLink(&args, "Hitem", itemid))
+        return false;
+
+    Item* pItem = Item::CreateItem(itemid, 1);
+    if (!pItem)
+        return false;
+
+    WorldDatabase.PExecute("UPDATE npc_vendor SET ReqArenaPoints = %u WHERE item = %u",points,itemid);
+    PSendSysMessage("Updated required arena points to %u on %s",points,pItem->GetNameLink(true).c_str());
+    return true;
+}
+
+bool ChatHandler::HandleReqItemCommand(char* args)
+{
+    uint32 reqitem;
+    if (!ExtractUInt32(&args,reqitem))
+        return false;
+
+    uint32 itemid;
+    if (!ExtractUint32KeyFromLink(&args, "Hitem", itemid))
+        return false;
+
+    Item* pItem = Item::CreateItem(itemid, 1);
+    if (!pItem)
+        return false;
+
+    Item* pReqItem = Item::CreateItem(reqitem, 1);
+    if (!pReqItem)
+        return false;
+
+    WorldDatabase.PExecute("UPDATE npc_vendor SET ReqItem = %u WHERE item = %u",reqitem,itemid);
+    PSendSysMessage("Updated required item to %s%s on %s",pReqItem->GetNameLink(true).c_str(),MSG_COLOR_YELLOW,pItem->GetNameLink(true).c_str());
+    return true;
+}
+
+bool ChatHandler::HandleReqGoldCommand(char* args)
+{
+    uint32 copper;
+    if (!ExtractUInt32(&args,copper))
+        return false;
+
+    uint32 itemid;
+    if (!ExtractUint32KeyFromLink(&args, "Hitem", itemid))
+        return false;
+
+    Item* pItem = Item::CreateItem(itemid, 1);
+    if (!pItem)
+        return false;
+
+    WorldDatabase.PExecute("UPDATE item_template SET BuyPrice = %u, SellPrice = %u WHERE entry = %u",copper,copper/4,itemid);
+
+    PSendSysMessage("Updated required gold to %u on %s",copper,pItem->GetNameLink(true).c_str());
     return true;
 }

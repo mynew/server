@@ -18065,6 +18065,18 @@ bool Player::BuyItemFromVendor(ObjectGuid vendorGuid, uint32 item, uint8 count, 
         }
     }
 
+    uint32 price = pProto->BuyPrice * count;
+
+    // reputation discount
+    price = uint32(floor(price * GetReputationPriceDiscount(pCreature)));
+
+    if (GetMoney() < price)
+    {
+        SendBuyError(BUY_ERR_NOT_ENOUGHT_MONEY, pCreature, item, 0);
+        CanBuy = false;
+    }
+
+
     if (crItem->ReqArenaRating > GetMaxPersonalArenaRatingRequirement())
     {
         if (crItem->ReqArenaRating > 0 )
@@ -18084,39 +18096,43 @@ bool Player::BuyItemFromVendor(ObjectGuid vendorGuid, uint32 item, uint8 count, 
             CanBuy = false;
         }
     }
-    if (!HasItemCount(crItem->ReqItem,1,false) || !GetBuyEnabled())
+    if ((!HasItemCount(crItem->ReqItem,1,false) && !HasItemCount(crItem->ReqItem2,1,false)) || !GetBuyEnabled())
     {
         Item* pItem = Item::CreateItem(crItem->ReqItem,1);
-        if (pItem && crItem->ReqItem > 0)
+        Item* pItem2 = Item::CreateItem(crItem->ReqItem2,1);
+        if (pItem && crItem->ReqItem > 0 && pItem2 && crItem->ReqItem2 > 0)
         {
-            SendEquipError(EQUIP_ERR_VENDOR_MISSING_TURNINS,pItem,NULL,crItem->ReqItem);
+            SendEquipError(EQUIP_ERR_VENDOR_MISSING_TURNINS,NULL,NULL,NULL);
+            ChatHandler(this).PSendSysMessage("You need %s%s or %s%s to buy this item.",pItem->GetNameLink(true).c_str(),MSG_COLOR_YELLOW,pItem2->GetNameLink(true).c_str(),MSG_COLOR_YELLOW);
+            CanBuy = false;
+        }
+        else if (pItem && crItem->ReqItem > 0)
+        {
+            SendEquipError(EQUIP_ERR_VENDOR_MISSING_TURNINS,NULL,NULL,NULL);
             ChatHandler(this).PSendSysMessage("You need %s%s to buy this item.",pItem->GetNameLink(true).c_str(),MSG_COLOR_YELLOW);
             CanBuy = false;
         }
+        else if (pItem2 && crItem->ReqItem2 > 0)
+        {
+            SendEquipError(EQUIP_ERR_VENDOR_MISSING_TURNINS,NULL,NULL,NULL);
+            ChatHandler(this).PSendSysMessage("You need %s%s to buy this item.",pItem2->GetNameLink(true).c_str(),MSG_COLOR_YELLOW);
+            CanBuy = false;
+        }
     }
-    if (!GetBuyEnabled() && (crItem->ReqArenaPoints > 0 || crItem->ReqItem > 0) && CanBuy)
+    if (!GetBuyEnabled() && (crItem->ReqItem > 0 || crItem->ReqItem2 > 0))
     {
         Item* pItem = Item::CreateItem(pProto->ItemId,1);
         if (pItem)
-        {
-            SendEquipError(EQUIP_ERR_ITEM_LOCKED, NULL, NULL);
             ChatHandler(this).PSendSysMessage("You must type %s.togglebuy%s to buy %s",MSG_COLOR_RED,MSG_COLOR_YELLOW,pItem->GetNameLink(true).c_str());
-        }
     }
 
     if (!CanBuy)
         return false;
 
-    uint32 price = pProto->BuyPrice * count;
-
-    // reputation discount
-    price = uint32(floor(price * GetReputationPriceDiscount(pCreature)));
-
-    if (GetMoney() < price)
-    {
-        SendBuyError(BUY_ERR_NOT_ENOUGHT_MONEY, pCreature, item, 0);
-        return false;
-    }
+    if (crItem->ReqItem > 0)
+        DestroyItemCount(crItem->ReqItem,1,true);
+    if (crItem->ReqItem2 > 0)
+        DestroyItemCount(crItem->ReqItem2,1,true);
 
     Item* pItem = NULL;
 
@@ -21187,8 +21203,9 @@ void Player::UpdateKnownTitles()
     uint32 honor_kills = GetUInt32Value(PLAYER_FIELD_LIFETIME_HONORBALE_KILLS);
     uint32 old_title = GetUInt32Value(PLAYER_CHOSEN_TITLE);
     RemoveFlag64(PLAYER__FIELD_KNOWN_TITLES,PLAYER_TITLE_MASK_ALL_PVP);
-    if(honor_kills < 0)
+    if(honor_kills == 0)
         return;
+
     bool max_rank = ((honor_kills >= sWorld.pvp_ranks[HKRANKMAX-1]) ? true : false);
     for(int i = HKRANK01; i != HKRANKMAX; ++i)
     {

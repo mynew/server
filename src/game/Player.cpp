@@ -20875,43 +20875,6 @@ void Player::CreatePet(uint32 cEntry)
     delete pCreature;
 }
 
-void Player::InGamemasterGossip(Creature * pCreature)
-{
-    bool result = false;
-    PlayerTalkClass->GetGossipMenu().AddMenuItem(5,"Logged in gamemasters:",1,1,"",0);
-    HashMapHolder<Player>::ReadGuard g(HashMapHolder<Player>::GetLock());
-    HashMapHolder<Player>::MapType &m = sObjectAccessor.GetPlayers();
-    for (HashMapHolder<Player>::MapType::const_iterator itr = m.begin(); itr != m.end(); ++itr)
-    {
-        Player *pPlayer = itr->second;
-        if (pPlayer->isGameMaster())
-        {
-            std::string gossipstring(pPlayer->GetName());
-            if (pPlayer->isAcceptWhispers())
-            {
-                gossipstring += " - Accepting Whispers";
-            }
-            else
-            {
-                gossipstring += " - Not Accepting Whispers";
-            }
-            if (pPlayer->isAFK())
-            {
-                gossipstring += " <AFK>";
-            }
-            PlayerTalkClass->GetGossipMenu().AddMenuItem(5,gossipstring,1,1,"",0);
-            result = true;
-        }
-    }
-    if (result == false)
-    {
-        PlayerTalkClass->GetGossipMenu().AddMenuItem(5,"Sorry, there are no gamemasters active on the server at the moment. Please write a ticket instead.",1,1,"",0);
-    }
-    ChatHandler(GetSession()).PSendSysMessage("%s[Server Message]%s Tickets have a higher priority then whispers. If you want help, write a ticket. To write a ticket you just have to press the questionmark(?), then press either Talk to a GM or Report issue. A text window will show. Write as describing as possible, badly written tickets will be ignored.",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE);
-
-    PlayerTalkClass->SendGossipMenu(1,pCreature->GetObjectGuid());
-}
-
 template<template <typename> class P = std::less >
 struct compare_pair_second {
     template<class T1, class T2> bool operator()(const std::pair<T1, T2>& left, const std::pair<T1, T2>& right) {
@@ -20956,7 +20919,7 @@ void Player::HandlePvPKill()
             pAttacker->ModifyMoney(+Reward);
             pAttacker->IncreaseKillStreak();
 
-            ChatHandler(pAttacker).PSendSysMessage("%s[PvP System]%s You got awarded %g gold for damaging %s",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,Reward/10000.f,GetNameLink().c_str());
+            pAttacker->SendChatMessage("%s[PvP System]%s You got awarded %g gold for damaging %s",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,Reward/10000.f,GetNameLink().c_str());
 
             // Damage Code End | Healing Code Begin
             float TotalHealing = std::accumulate(pAttacker->m_Healers.begin(), pAttacker->m_Healers.end(),0,pair_adder); // Summary of all healing done to attacker
@@ -20980,7 +20943,7 @@ void Player::HandlePvPKill()
                 pHealer->ModifyMoney(+Reward);
                 pHealer->IncreaseKillStreak();
 
-                ChatHandler(pHealer).PSendSysMessage("%s[PvP System]%s You got awarded %g gold for healing %s",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,Reward/10000.f,pAttacker->GetNameLink().c_str());
+               pHealer->SendChatMessage("%s[PvP System]%s You got awarded %g gold for healing %s",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,Reward/10000.f,pAttacker->GetNameLink().c_str());
             }
             // Healing Code End
         }
@@ -20988,12 +20951,13 @@ void Player::HandlePvPKill()
 
     if (Player* pMostDamager = sObjectMgr.GetPlayer(MaxDmgGUID))
     {
-        ChatHandler(this).PSendSysMessage("%s[PvP System]%s Your main attacker was %s%s who did %u damage to you.",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,pMostDamager->GetNameLink().c_str(),MSG_COLOR_WHITE,MaxDmgDmg);
+        pMostDamager->SendChatMessage("%s[PvP System]%s You did most damage to %s%s (%u)",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,GetNameLink().c_str(),MSG_COLOR_WHITE,MaxDmgDmg);
+        SendChatMessage("%s[PvP System]%s Your main attacker was %s%s who did %u damage to you.",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,pMostDamager->GetNameLink().c_str(),MSG_COLOR_WHITE,MaxDmgDmg);
         HandleHardcoreKill(pMostDamager);
 
         if (GetBounty() > 0)
         {
-            ChatHandler(pMostDamager).PSendSysMessage("%s[PvP System]%s You killed %s and got awarded with the bounty on his head, which was %g",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,GetNameLink(),float(GetBounty())/10000.0f);
+            pMostDamager->SendChatMessage("%s[PvP System]%s You killed %s and got awarded with the bounty on his head, which was %g",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,GetNameLink(),float(GetBounty())/10000.0f);
             pMostDamager->ModifyMoney(+GetBounty());
         }
     }
@@ -21044,7 +21008,7 @@ void Player::HandleHardcoreKill(Player* attacker)
                         if(attacker->StoreNewItemInBestSlots(pItem->GetProto()->ItemId,1))
                         {
                             attacker->SendNewItem(pItem,1,true,false,true);
-                            ChatHandler(this).PSendSysMessage("%s[PvP System]%s %s took %s%s from you.",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,attacker->GetNameLink().c_str(),pItem->GetNameLink().c_str(),MSG_COLOR_WHITE);
+                            SendChatMessage("%s[PvP System]%s %s took %s%s from you.",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,attacker->GetNameLink().c_str(),pItem->GetNameLink().c_str(),MSG_COLOR_WHITE);
 
                         }
                     }
@@ -21054,7 +21018,7 @@ void Player::HandleHardcoreKill(Player* attacker)
         else
             SetInsuranceCharges(GetInsuranceCharges()-1);
         if (GetInsuranceCharges() > 0 && GetInsuranceCharges() < 10)
-            ChatHandler(this).PSendSysMessage("%s[PvP System]%s You only have %u insurance tickets left.",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,GetInsuranceCharges());
+            SendChatMessage("%s[PvP System]%s You only have %u insurance tickets left.",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,GetInsuranceCharges());
     }
 }
 
@@ -21068,16 +21032,13 @@ bool Player::HandlePvPAntifarm(Player* victim)
         else if (victim->HasAura(2479))
         {
             if (sendInfo)
-                ChatHandler(this).PSendSysMessage("%s[PvP System]%s Hes not worth money or honor yet!",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE);
+                SendChatMessage("%s[PvP System]%s Hes not worth money or honor yet!",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE);
             return false;
         }
         else if (GetSession()->GetRemoteAddress() == victim->GetSession()->GetRemoteAddress())
         {
             if (sendInfo)
-            {
-                ChatHandler(this).PSendSysMessage("%s[Anti Farming System]%s You have same ip as your victim", MSG_COLOR_MAGENTA, MSG_COLOR_WHITE);
-                ChatHandler(this).PSendSysMessage("%sthis means you are on same network and could farm money together.", MSG_COLOR_WHITE);
-            }
+                SendChatMessage("%s[Anti Farming System]%s You have same ip as your victim", MSG_COLOR_MAGENTA, MSG_COLOR_WHITE);
             return false;
         }
         else if (victim->GetObjectGuid() == GetLastAttackerGUID())
@@ -21086,7 +21047,7 @@ bool Player::HandlePvPAntifarm(Player* victim)
             if (GetLastAttackerGUIDCount() >= 6)
             {
                 if (sendInfo)
-                    ChatHandler(this).PSendSysMessage("%s[Anti Farming System]%s You don't get awarded for killing a player more than 6 times in a row!.", MSG_COLOR_MAGENTA, MSG_COLOR_WHITE);
+                    SendChatMessage("%s[Anti Farming System]%s You don't get awarded for killing a player more than 6 times in a row!.", MSG_COLOR_MAGENTA, MSG_COLOR_WHITE);
                 return false;
             }
         }
@@ -21096,7 +21057,7 @@ bool Player::HandlePvPAntifarm(Player* victim)
             if (victim->GetLastVictimGUIDCount() >= 6)
             {
                 if (sendInfo)
-                    ChatHandler(this).PSendSysMessage("%s[Anti Farming System]%s You don't get awarded for killing a player more than 6 times in a row!.", MSG_COLOR_MAGENTA, MSG_COLOR_WHITE);
+                    SendChatMessage("%s[Anti Farming System]%s You don't get awarded for killing a player more than 6 times in a row!.", MSG_COLOR_MAGENTA, MSG_COLOR_WHITE);
                 return false;
             }
         }
@@ -21141,60 +21102,6 @@ bool Player::AddAura(uint32 spellID)
     AddSpellAuraHolder(holder);
 
     return true;
-}
-
-uint32 Player::SuitableForTransmogrification(Item* pOld, Item* pNew) // custom
-{
-    // not possibly the best structure here, but atleast I got my head around this
-    if(!pNew->HasGoodFakeQuality())
-        return ERR_FAKE_NEW_BAD_QUALITY;
-    if(!pOld->HasGoodFakeQuality())
-        return ERR_FAKE_OLD_BAD_QUALITY;
-
-    if(pOld->GetProto()->DisplayInfoID == pNew->GetProto()->DisplayInfoID)
-        return ERR_FAKE_SAME_DISPLAY;
-    if(pOld->GetFakeEntry())
-        if(const ItemPrototype* FakeItemTemplate = sObjectMgr.GetItemPrototype(pOld->GetFakeEntry()))
-            if(FakeItemTemplate->DisplayInfoID == pNew->GetProto()->DisplayInfoID)
-                return ERR_FAKE_SAME_DISPLAY_FAKE;
-    if(CanUseItem(pNew, false) != EQUIP_ERR_OK)
-        return ERR_FAKE_CANT_USE;
-    uint32 NClass = pNew->GetProto()->Class;
-    uint32 OClass = pOld->GetProto()->Class;
-    uint32 NSubClass = pNew->GetProto()->SubClass;
-    uint32 OSubClass = pOld->GetProto()->SubClass;
-    uint32 NEWinv = pNew->GetProto()->InventoryType;
-    uint32 OLDinv = pOld->GetProto()->InventoryType;
-    if(NClass != OClass)
-        return ERR_FAKE_NOT_SAME_CLASS;
-    if(NClass == ITEM_CLASS_WEAPON && NSubClass != ITEM_SUBCLASS_WEAPON_FISHING_POLE && OSubClass != ITEM_SUBCLASS_WEAPON_FISHING_POLE)
-    {
-        if(NSubClass == OSubClass || ((NSubClass == ITEM_SUBCLASS_WEAPON_BOW || NSubClass == ITEM_SUBCLASS_WEAPON_GUN || NSubClass == ITEM_SUBCLASS_WEAPON_CROSSBOW) && (OSubClass == ITEM_SUBCLASS_WEAPON_BOW || OSubClass == ITEM_SUBCLASS_WEAPON_GUN || OSubClass == ITEM_SUBCLASS_WEAPON_CROSSBOW)))
-            if(NEWinv == OLDinv || (NEWinv == INVTYPE_WEAPON && (OLDinv == INVTYPE_WEAPONMAINHAND || OLDinv == INVTYPE_WEAPONOFFHAND)))
-                return ERR_FAKE_OK;
-            else
-                return ERR_FAKE_BAD_INVENTORYTYPE;
-        else
-            return ERR_FAKE_BAD_SUBLCASS;
-    }
-    else if(NClass == ITEM_CLASS_ARMOR)
-        if(NSubClass == OSubClass)
-            if(NEWinv == OLDinv || (NEWinv == INVTYPE_CHEST && OLDinv == INVTYPE_ROBE) || (NEWinv == INVTYPE_ROBE && OLDinv == INVTYPE_CHEST))
-                return ERR_FAKE_OK;
-            else
-                return ERR_FAKE_BAD_INVENTORYTYPE;
-        else
-            return ERR_FAKE_BAD_SUBLCASS;
-    return ERR_FAKE_BAD_CLASS;
-}
-
-Bag* Player::GetBagByPos(uint8 bag) const
-{
-    if ((bag >= INVENTORY_SLOT_BAG_START && bag < INVENTORY_SLOT_BAG_END)
-        || (bag >= BANK_SLOT_BAG_START && bag < BANK_SLOT_BAG_END))
-        if (Item* item = GetItemByPos(INVENTORY_SLOT_BAG_0, bag))
-            return item->ToBag();
-    return NULL;
 }
 
 void Player::UpdateKnownTitles()

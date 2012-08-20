@@ -314,7 +314,13 @@ bool ChatHandler::HandleWorldChatCommand(char* args)
     Player* pPlayer = m_session->GetPlayer();
     if (!pPlayer)
         return false;
-    if (!ExtractQuotedOrLiteralArg(&args))
+
+    char *c_msg = ExtractQuotedOrLiteralArg(&args);
+    if (!c_msg)
+        return false;
+
+    std::string s_msg = c_msg;
+    if (s_msg.empty())
         return false;
 
     std::string GlobalString = "";
@@ -327,7 +333,7 @@ bool ChatHandler::HandleWorldChatCommand(char* args)
     else if (pPlayer->GetTeam() == ALLIANCE)
         GlobalString = ""+GlobalString+""+MSG_COLOR_DARKBLUE+""+pPlayer->GetNameLink()+": ";
 
-    GlobalString = ""+GlobalString+""+MSG_COLOR_WHITE+""+args+"";
+    GlobalString = ""+GlobalString+""+MSG_COLOR_WHITE+""+s_msg+"";
 
     PSendGlobalSysMessage(GlobalString.c_str());
     return true;

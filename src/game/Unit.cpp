@@ -532,8 +532,8 @@ uint32 Unit::DealDamage(Unit *pVictim, uint32 damage, CleanDamage const* cleanDa
 
     // Remove overkill damage.
     int32 nooverkilldmg = 0;
-    if (damage > GetHealth())
-        nooverkilldmg = damage-GetHealth();
+    if (damage > pDamaged->GetHealth())
+        nooverkilldmg = pDamaged->GetHealth();
     else
         nooverkilldmg = damage;
 
@@ -547,7 +547,6 @@ uint32 Unit::DealDamage(Unit *pVictim, uint32 damage, CleanDamage const* cleanDa
     // remove affects from attacker at any non-DoT damage (including 0 damage)
     if( damagetype != DOT)
     {
-        RemoveSpellsCausingAura(SPELL_AURA_MOD_STEALTH);
         RemoveSpellsCausingAura(SPELL_AURA_FEIGN_DEATH);
 
         if(pVictim != this)
@@ -782,7 +781,7 @@ uint32 Unit::DealDamage(Unit *pVictim, uint32 damage, CleanDamage const* cleanDa
 
                 uint32 rand = urand(1,6);
                 if (pPlayer->isGameMaster())
-                    ChatHandler(pPlayer->GetSession()).PSendSysMessage("You are being teleported to %u",rand);
+                    pPlayer->SendChatMessage("You are being teleported to %u",rand);
 
                 if (rand == 1)
                     pPlayer->TeleportTo(0,-13257.1f, 223.449f,   42.9766f,   0.681904f);

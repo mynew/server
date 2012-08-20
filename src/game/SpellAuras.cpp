@@ -2560,9 +2560,6 @@ void Aura::HandleAuraMounted(bool apply, bool Real)
         if (minfo)
             display_id = minfo->modelid;
 
-        // Remove stealth before mounting
-        target->RemoveSpellsCausingAura(SPELL_AURA_MOD_STEALTH);
-
         target->Mount(display_id, GetId());
     }
     else
@@ -3600,6 +3597,9 @@ void Aura::HandleAuraModStun(bool apply, bool Real)
 
         target->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_STUNNED);
         target->CastStop(target->GetObjectGuid() == GetCasterGuid() ? GetId() : 0);
+
+        // Remove stealth when stunned
+        target->RemoveSpellsCausingAura(SPELL_AURA_MOD_STEALTH);
 
         // Creature specific
         if(target->GetTypeId() != TYPEID_PLAYER)

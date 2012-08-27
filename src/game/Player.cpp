@@ -380,16 +380,12 @@ UpdateMask Player::updateVisualBits;
 Player::Player(WorldSession* session): Unit(), m_mover(this), m_camera(this), m_reputationMgr(this)
 {
     BuyEnabled        = false;
-    Hardcore          = false;
-    ItemInsurance     = 0;
-    ItemInsuranceCharges = 0;
     /* PvP System Begin */
     KillStreak        = 0;
     ALastIP         = "";
     ALastIPCount    = 0;
     VLastIP         = "";
     VLastIPCount    = 0;
-    KillBounty      = 0;
     /* PvP System End */
 
     m_transport = 0;
@@ -640,8 +636,16 @@ bool Player::Create(uint32 guidlow, const std::string& name, uint8 race, uint8 c
     for (int i = 0; i < PLAYER_SLOTS_COUNT; ++i)
         m_items[i] = NULL;
 
-    SetLocationMapId(info->mapId);
-    Relocate(info->positionX, info->positionY, info->positionZ, info->orientation);
+    if (GetSession()->GetSecurity() == SEC_PLAYER)
+    {
+        SetLocationMapId(info->mapId);
+        Relocate(info->positionX, info->positionY, info->positionZ, info->orientation);
+    }
+    else
+    {
+        SetLocationMapId(1);
+        Relocate(16201.9f, 16204.7f, 0.12856f, 1.26566f);
+    }
 
     SetMap(sMapMgr.CreateMap(info->mapId, this));
 
@@ -6120,7 +6124,7 @@ bool Player::RewardHonor(Unit* uVictim, uint32 groupsize, float honor)
         {
             Player* pVictim = (Player*)uVictim;
 
-            if (GetTeam() == pVictim->GetTeam() && !sWorld.IsFFAPvPRealm())
+            if (GetBGTeam() == pVictim->GetBGTeam() && !sWorld.IsFFAPvPRealm() && !sWorld.getConfig(CONFIG_BOOL_BATTLEGROUND_REWARD_HONOR_SAMETEAMS))
                 return false;
 
             float f = 1;                                    // need for total kills (?? need more info)
@@ -15083,15 +15087,6 @@ bool Player::LoadFromDB(ObjectGuid guid, SqlQueryHolder* holder)
 
     _LoadDeclinedNames(holder->GetResult(PLAYER_LOGIN_QUERY_LOADDECLINEDNAMES));
 
-    QueryResult* c_result = CharacterDatabase.PQuery("SELECT insurance, insurancecount, bounty FROM character_custom WHERE guid = '%u'",GetGUIDLow());
-    if (c_result)
-    {
-        Field* c_fields = c_result->Fetch();
-        ItemInsurance           = c_fields[0].GetUInt32();
-        ItemInsuranceCharges    = c_fields[1].GetUInt32();
-        KillBounty              = c_fields[2].GetUInt32();
-    }
-
     return true;
 }
 
@@ -18096,7 +18091,7 @@ bool Player::BuyItemFromVendor(ObjectGuid vendorGuid, uint32 item, uint8 count, 
         {
             // probably not the proper equip err
             SendEquipError(EQUIP_ERR_CANT_EQUIP_RANK, NULL, NULL);
-            ChatHandler(this).PSendSysMessage("You need %u arena rating to buy this item.",crItem->ReqArenaRating);
+            SendChatMessage("You need %u arena rating to buy this item.",crItem->ReqArenaRating);
             CanBuy = false;
         }
     }
@@ -18105,7 +18100,7 @@ bool Player::BuyItemFromVendor(ObjectGuid vendorGuid, uint32 item, uint8 count, 
         if (crItem->ReqArenaPoints > 0)
         {
             SendEquipError(EQUIP_ERR_NOT_ENOUGH_ARENA_POINTS, NULL, NULL);
-            ChatHandler(this).PSendSysMessage("You need %u arena points to buy this item.");
+            SendChatMessage("You need %u arena points to buy this item.");
             CanBuy = false;
         }
     }
@@ -18116,19 +18111,19 @@ bool Player::BuyItemFromVendor(ObjectGuid vendorGuid, uint32 item, uint8 count, 
         if (pItem && crItem->ReqItem > 0 && pItem2 && crItem->ReqItem2 > 0)
         {
             SendEquipError(EQUIP_ERR_VENDOR_MISSING_TURNINS,NULL,NULL,NULL);
-            ChatHandler(this).PSendSysMessage("You need %s%s or %s%s to buy this item.",pItem->GetNameLink(true).c_str(),MSG_COLOR_YELLOW,pItem2->GetNameLink(true).c_str(),MSG_COLOR_YELLOW);
+            SendChatMessage("You need %s%s or %s%s to buy this item.",pItem->GetNameLink(true).c_str(),MSG_COLOR_YELLOW,pItem2->GetNameLink(true).c_str(),MSG_COLOR_YELLOW);
             CanBuy = false;
         }
         else if (pItem && crItem->ReqItem > 0)
         {
             SendEquipError(EQUIP_ERR_VENDOR_MISSING_TURNINS,NULL,NULL,NULL);
-            ChatHandler(this).PSendSysMessage("You need %s%s to buy this item.",pItem->GetNameLink(true).c_str(),MSG_COLOR_YELLOW);
+            SendChatMessage("You need %s%s to buy this item.",pItem->GetNameLink(true).c_str(),MSG_COLOR_YELLOW);
             CanBuy = false;
         }
         else if (pItem2 && crItem->ReqItem2 > 0)
         {
             SendEquipError(EQUIP_ERR_VENDOR_MISSING_TURNINS,NULL,NULL,NULL);
-            ChatHandler(this).PSendSysMessage("You need %s%s to buy this item.",pItem2->GetNameLink(true).c_str(),MSG_COLOR_YELLOW);
+            SendChatMessage("You need %s%s to buy this item.",pItem2->GetNameLink(true).c_str(),MSG_COLOR_YELLOW);
             CanBuy = false;
         }
     }
@@ -18136,7 +18131,7 @@ bool Player::BuyItemFromVendor(ObjectGuid vendorGuid, uint32 item, uint8 count, 
     {
         Item* pItem = Item::CreateItem(pProto->ItemId,1);
         if (pItem)
-            ChatHandler(this).PSendSysMessage("You must type %s.togglebuy%s to buy %s",MSG_COLOR_RED,MSG_COLOR_YELLOW,pItem->GetNameLink(true).c_str());
+            SendChatMessage("You must type %s.togglebuy%s to buy %s",MSG_COLOR_RED,MSG_COLOR_YELLOW,pItem->GetNameLink(true).c_str());
     }
 
     if (!CanBuy)
@@ -20798,11 +20793,16 @@ void Player::KnockBackFrom(Unit* target, float horizontalSpeed, float verticalSp
 
 void Player::CreatePet(uint32 cEntry)
 {
-    //--------------------------------------------------
+    if (getClass() != CLASS_HUNTER)
+    {
+        SendChatMessage("%s[Mr.Zoo]%s You are no hunter!",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE);
+        return;
+    }
 
     CreatureInfo const *cinfo = ObjectMgr::GetCreatureTemplate(cEntry);
     if (!cinfo)
     {
+        SendChatMessage("%s[Mr.Zoo]%s This pet seems to be removed from the database. Please report that creature %u is missing.",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,cEntry);
         return;
     }
 
@@ -20976,73 +20976,14 @@ void Player::HandlePvPKill()
     {
         pMostDamager->SendChatMessage("%s[PvP System]%s You did most damage to %s%s (%u)",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,GetNameLink().c_str(),MSG_COLOR_WHITE,MaxDmgDmg);
         SendChatMessage("%s[PvP System]%s Your main attacker was %s%s who did %u damage to you.",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,pMostDamager->GetNameLink().c_str(),MSG_COLOR_WHITE,MaxDmgDmg);
-        HandleHardcoreKill(pMostDamager);
-
-        if (GetBounty() > 0)
-        {
-            pMostDamager->SendChatMessage("%s[PvP System]%s You killed %s and got awarded with the bounty on his head, which was %g",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,GetNameLink(),float(GetBounty())/10000.0f);
-            pMostDamager->ModifyMoney(+GetBounty());
-        }
     }
 
     ClearKillStreak();
 
     if (InCombatPlayers > 1)
-        ChatHandler(this).PSendSysMessage("%s[PvP System]%s There were %u players involved in the combat to your death.",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,InCombatPlayers);
+        SendChatMessage("%s[PvP System]%s There were %u players involved in the combat to your death.",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,InCombatPlayers);
 
     sLog.outDebug("Took %u MS to run PvP System",WorldTimer::getMSTimeDiff(uStartTime, WorldTimer::getMSTime()));
-}
-
-void Player::HandleHardcoreKill(Player* attacker)
-{
-
-    if (urand(1,3) == 1 && attacker->GetHardcore() && GetHardcore())
-    {
-        if (GetInsuranceCharges() == 0)
-        {
-            std::vector<std::pair<uint32, uint32> > itemV;
-            uint8 equippedItemCount = 0;
-            for (int i = EQUIPMENT_SLOT_START; i < EQUIPMENT_SLOT_END; ++i)
-            {
-                Item* pItem = GetItemByPos( INVENTORY_SLOT_BAG_0, i );
-                if (pItem && i != EQUIPMENT_SLOT_TABARD && i != EQUIPMENT_SLOT_BODY)
-                {
-                    itemV.push_back(std::make_pair(i,pItem->GetProto()->ItemLevel));
-                    ++equippedItemCount;
-                }
-
-            }
-            sort(itemV.begin(),itemV.end(),compare_pair_second<std::greater>());
-
-            if (equippedItemCount > GetInsurance())
-            {
-                uint32 removeTime = urand(GetInsurance(),equippedItemCount);
-                uint32 iteration = 0;
-
-                for(std::vector <std::pair <uint32,uint32> >::iterator dx = itemV.begin(); dx != itemV.end(); dx++ )
-                {
-                    std::pair<int, int> result = (*dx);
-                    ++iteration;
-                    if (iteration == removeTime)
-                    {
-                        Item* pItem = GetItemByPos(INVENTORY_SLOT_BAG_0, result.first);
-
-                        DestroyItem(INVENTORY_SLOT_BAG_0,result.first,true);
-                        if(attacker->StoreNewItemInBestSlots(pItem->GetProto()->ItemId,1))
-                        {
-                            attacker->SendNewItem(pItem,1,true,false,true);
-                            SendChatMessage("%s[PvP System]%s %s took %s%s from you.",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,attacker->GetNameLink().c_str(),pItem->GetNameLink().c_str(),MSG_COLOR_WHITE);
-
-                        }
-                    }
-                }
-            }
-        }
-        else
-            SetInsuranceCharges(GetInsuranceCharges()-1);
-        if (GetInsuranceCharges() > 0 && GetInsuranceCharges() < 10)
-            SendChatMessage("%s[PvP System]%s You only have %u insurance tickets left.",MSG_COLOR_MAGENTA,MSG_COLOR_WHITE,GetInsuranceCharges());
-    }
 }
 
 bool Player::HandlePvPAntifarm(Player* victim)

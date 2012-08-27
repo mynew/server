@@ -642,11 +642,25 @@ void WorldSession::SendChatRestrictedNotice(ChatRestrictionType restriction)
     SendPacket(&data);
 }
 
+void stringReplace(std::string& str, const std::string& oldStr, const std::string& newStr)
+{
+    size_t pos = 0;
+    while((pos = str.find(oldStr, pos)) != std::string::npos)
+    {
+        str.replace(pos, oldStr.length(), newStr);
+        pos += newStr.length();
+    }
+}
+
+
 std::string ChatHandler::BuildWorldChatMsg(std::string msg)
 {
     std::string StaffString = "";
     if (m_session->GetSecurity() > SEC_PLAYER)
         StaffString = ""MSG_COLOR_MAGENTA"[Staff] ";
 
-    return ""+StaffString+""MSG_COLOR_RED""+m_session->GetPlayer()->GetNameLink(true)+""MSG_COLOR_WHITE": "+msg+"";
+    std::string message = ""+StaffString+""MSG_COLOR_RED""+m_session->GetPlayer()->GetNameLink(true)+""MSG_COLOR_WHITE": "+msg+"";
+    stringReplace(message,"|r",MSG_COLOR_WHITE);
+
+    return message;
 }

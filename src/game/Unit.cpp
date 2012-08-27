@@ -532,15 +532,18 @@ uint32 Unit::DealDamage(Unit* pVictim, uint32 damage, CleanDamage const* cleanDa
         Player* pDamager = GetCharmerOrOwnerPlayerOrPlayerItself();
         Player* pDamaged = pVictim->GetCharmerOrOwnerPlayerOrPlayerItself();
 
-        // Remove overkill damage.
-        int32 nooverkilldmg = 0;
-        if (damage > pDamaged->GetHealth())
-            nooverkilldmg = pDamaged->GetHealth();
-        else
-            nooverkilldmg = damage;
+        if (pDamager && pDamaged && pDamager != pDamaged)
+        {
+            // Remove overkill damage.
+            int32 nooverkilldmg = 0;
+            if (damage > pDamaged->GetHealth())
+                nooverkilldmg = pDamaged->GetHealth();
+            else
+                nooverkilldmg = damage;
 
-        if (pDamager && pDamaged && pDamager != pDamaged && nooverkilldmg > 0)
-            pDamaged->Damaged(pDamager->GetObjectGuid(), nooverkilldmg);
+            if (nooverkilldmg > 0)
+                pDamaged->Damaged(pDamager->GetObjectGuid(), nooverkilldmg);
+        }
     }
 
     // remove affects from victim (including from 0 damage and DoTs)
@@ -4988,7 +4991,7 @@ bool Unit::IsHostileTo(Unit const* unit) const
 
         //= PvP states
         // Green/Blue (can't attack)
-        if (pTester->GetTeam() == pTarget->GetTeam() && pTester->GetBGTeam() == pTarget->GetBGTeam())
+        if (pTester->GetBGTeam() == pTarget->GetBGTeam())
             return false;
 
         // Red (can attack) if true, Blue/Yellow (can't attack) in another case
@@ -5100,7 +5103,7 @@ bool Unit::IsFriendlyTo(Unit const* unit) const
 
         //= PvP states
         // Green/Blue (can't attack)
-        if (pTester->GetTeam() == pTarget->GetTeam() && pTester->GetBGTeam() == pTarget->GetBGTeam())
+        if (pTester->GetBGTeam() == pTarget->GetBGTeam())
             return true;
 
         // Blue (friendly/non-attackable) if not PVP, or Yellow/Red in another case (attackable)
